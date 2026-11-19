@@ -4,7 +4,7 @@ import AppKit
 ///
 /// Like Window Scarves, it only uses public APIs that need no permissions: CGWindowListCopyWindowInfo
 /// says where every window is and how they're stacked. It looks about 7 times a second while nothing
-/// is happening, and 60 times a second while something is moving.
+/// is happening, and 60 times a second while something is moving or a tail is still swinging.
 final class WindowTracker: NSObject {
     private let settings = Settings.shared
     private let myPID = getpid()
@@ -15,6 +15,7 @@ final class WindowTracker: NSObject {
     private var isFast = false
     /// Keep looking quickly until this time.
     private var fastUntil: CFTimeInterval = 0
+    private var lastTick = CACurrentMediaTime()
     private var mouseMonitor: Any?
 
     /// Where each decorated window was at the last look, to notice movement.
@@ -26,8 +27,14 @@ final class WindowTracker: NSObject {
     /// Which beat of the blink pattern we're on. Shared by every window so they all blink together.
     private(set) var beat = 0
 
-    /// Every app seen with a window since launch, for the checkboxes in the Show On menu.
-    private(set) var recentApps: Set<String> = []
+    /// Single windows picked with Choose Windows (Option-click). Window numbers don't survive a
+    /// restart, so these last until the app quits; whole apps are remembered in Settings.
+    private(set) var chosenWindows: Set<CGWindowID> = []
+
+    /// Every window that could have lights right now, front to back, and every real app window
+    /// (including popovers and full-screen ones), for the window picker.
+    private var candidates: [Target] = []
+    private var allWindows: [Target] = []
 
     private static let fastInterval = 1.0 / 60
     /// Asking macOS for the window list is most of this app's idle cost, so while nothing is
@@ -144,12 +151,19 @@ final class WindowTracker: NSObject {
 
     @objc private func tick() {
         let now = CACurrentMediaTime()
+        let dt = CGFloat(min(now - lastTick, 1.0 / 30))
+        lastTick = now
         // With the button held, a drag could start any moment.
         if NSEvent.pressedMouseButtons & 1 != 0 { fastUntil = max(fastUntil, now + 0.3) }
 
         refresh()
 
-        let wantFast = now < fastUntil
+        var swinging = false
+        for overlay in overlays.values {
+            if overlay.step(dt: dt) { swinging = true }
+        }
+
+        let wantFast = swinging || now < fastUntil
         if wantFast != isFast { setSpeed(fast: wantFast) }
     }
 
@@ -200,15 +214,19 @@ final class WindowTracker: NSObject {
             if overlays[w.id] == nil, isPopover(w, above: windows[(k + 1)...]) { continue }
             targets.append(w)
         }
-        recentApps.formUnion(targets.map(\.owner))
+        candidates = targets
+        allWindows = windows
 
-        // The Show On menu: only the window in front (if its app is ticked), or every ticked app.
-        if settings.showOn == .frontWindow { targets = Array(targets.prefix(1)) }
-        let skipped = settings.skippedApps
-        targets.removeAll { skipped.contains($0.owner) }
+        // The Show On menu.
+        switch settings.showOn {
+        case .allWindows: break
+        case .frontWindow: targets = Array(targets.prefix(1))
+        case .chosenWindows: targets.removeAll { !isChosen($0) }
+        }
 
         targets = targets.filter { t in
-            if overlays[t.id] != nil { return true }
+            // Windows already lit, and windows just picked by hand, light up straight away.
+            if overlays[t.id] != nil || chosenWindows.contains(t.id) { return true }
             if let s = settling[t.id], s.frame == t.frame {
                 if now - s.since >= 0.18 {
                     settling[t.id] = nil
@@ -238,15 +256,15 @@ final class WindowTracker: NSObject {
             overlays[id] = nil
         }
 
-        let wrap = settings.size, pattern = settings.pattern
+        let wrap = settings.size, style = settings.style, tail = settings.tail, pattern = settings.pattern
         for t in targets {
             let overlay = overlays[t.id] ?? {
                 let made = LightsOverlay(targetID: t.id)
                 overlays[t.id] = made
                 return made
             }()
-            overlay.update(frame: t.frame, theme: settings.theme(forApp: t.owner), wrap: wrap,
-                           beat: beat, pattern: pattern)
+            overlay.update(frame: t.frame, theme: settings.theme(forApp: t.owner), wrap: wrap, style: style,
+                           tail: tail, beat: beat, pattern: pattern)
             keepAbove(overlay, t, stackIndex: stackIndex, ownerAt: ownerAt, now: now)
         }
     }
@@ -282,6 +300,59 @@ final class WindowTracker: NSObject {
         log("re-stacked the lights on \(t.owner) (attempt \(overlay.orderMisses))")
         fastUntil = max(fastUntil, now + 0.2)
     }
+
+    // MARK: Choosing windows
+
+    /// A window the picker can point at.
+    struct PickableWindow: Equatable {
+        let id: CGWindowID
+        let frame: CGRect
+        let app: String
+        /// Lit because its whole app was chosen.
+        let appChosen: Bool
+        /// Lit because this one window was chosen.
+        let windowChosen: Bool
+        var isChosen: Bool { appChosen || windowChosen }
+    }
+
+    private func isChosen(_ t: Target) -> Bool {
+        settings.chosenApps.contains(t.owner) || chosenWindows.contains(t.id)
+    }
+
+    /// The window a click at `point` (global CoreGraphics coordinates) would land on, if it's one
+    /// that can have lights.
+    func window(at point: CGPoint) -> PickableWindow? {
+        // The frontmost real window under the point decides, even if it's one that can't have
+        // lights (a popover, say), so the picker never points at a window hidden behind it.
+        guard let hit = allWindows.first(where: { $0.frame.contains(point) }),
+              candidates.contains(where: { $0.id == hit.id }) else { return nil }
+        return PickableWindow(id: hit.id, frame: hit.frame, app: hit.owner,
+                              appChosen: settings.chosenApps.contains(hit.owner),
+                              windowChosen: chosenWindows.contains(hit.id))
+    }
+
+    /// Choose a window, or take it back. Choosing picks its whole app (remembered across restarts),
+    /// or with `justThisWindow` only that one window. Taking back undoes whichever choice lit it.
+    func toggle(_ window: PickableWindow, justThisWindow: Bool) {
+        if window.isChosen {
+            settings.chosenApps.remove(window.app)
+            chosenWindows.remove(window.id)
+        } else if justThisWindow {
+            chosenWindows.insert(window.id)
+        } else {
+            settings.chosenApps.insert(window.app)
+        }
+        refresh()
+    }
+
+    /// Forget every choice made with Choose Windows.
+    func forgetChoices() {
+        chosenWindows.removeAll()
+        settings.chosenApps.removeAll()
+    }
+
+    /// Whether anything has been chosen with Choose Windows.
+    var hasChoices: Bool { !chosenWindows.isEmpty || !settings.chosenApps.isEmpty }
 
     // MARK: Which windows get lights
 

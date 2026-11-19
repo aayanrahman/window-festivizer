@@ -28,41 +28,65 @@ enum BulbArt {
 
     // MARK: Pictures
 
-    /// The cable plus every bulb switched off, as one picture the size of `g.stripRect`.
-    static func base(_ g: WrapGeometry, theme: Theme, scale: CGFloat) -> CGImage? {
+    /// One layer of a window's strip, every bulb switched off, as a picture the size of
+    /// `g.stripRect`. `behind` picks the back of the coil (shown only above the window's top edge)
+    /// or everything in front.
+    static func strip(_ g: WrapGeometry, theme: Theme, behind: Bool, scale: CGFloat) -> CGImage? {
         let rect = g.stripRect
         return image(size: rect.size, scale: scale) { ctx in
             ctx.translateBy(x: -rect.minX, y: -rect.minY)   // draw in window coordinates
+            if behind { ctx.clip(to: aboveTheWindow) }
             // One small, tight shadow for everything, so it sits on the window rather than floats.
             shadow(ctx, down: 0.6, blur: 1.2, alpha: 0.35, scale: scale)
             ctx.beginTransparencyLayer(auxiliaryInfo: nil)
-            drawCable(ctx, g, colour: theme.wire)
-            for bulb in g.bulbs {
+            if behind {
+                drawCable(ctx, g.backRuns, twist: g.twist, colour: theme.wire.darker(0.3))
+            } else {
+                drawCable(ctx, g.frontRuns, twist: g.twist, colour: theme.wire, fades: g.fades)
+            }
+            for bulb in g.bulbs where bulb.behind == behind {
                 drawBulb(ctx, bulb, colour: theme.colours[bulb.group], socket: theme.wire, lit: false)
             }
             ctx.endTransparencyLayer()
         }
     }
 
-    /// One bulb switched on, drawn into its own small picture that sits exactly over the same bulb
-    /// in `base`. `frame` is where the picture goes, in strip coordinates (y down), and its edges
-    /// are on whole pixels so Core Animation never has to resample it.
-    static func litBulb(_ bulb: WrapGeometry.Bulb, in strip: CGRect, theme: Theme,
-                        scale: CGFloat) -> (image: CGImage?, frame: CGRect) {
-        let box = bounds(of: bulb, pad: bulb.length * 0.4).offsetBy(dx: -strip.minX, dy: -strip.minY)
-        let frame = CGRect(x: floor(box.minX * scale) / scale, y: floor(box.minY * scale) / scale,
-                           width: (ceil(box.maxX * scale) - floor(box.minX * scale)) / scale,
-                           height: (ceil(box.maxY * scale) - floor(box.minY * scale)) / scale)
+    /// One bulb in its own small picture, lit or not. `origin` is the top-left corner of the layer
+    /// it goes in, in the same coordinates as the bulb. The returned frame is relative to that
+    /// corner (y down), with edges on whole pixels so Core Animation never has to resample it.
+    static func bulbPicture(_ bulb: WrapGeometry.Bulb, lit: Bool, theme: Theme, origin: CGPoint,
+                            scale: CGFloat) -> (image: CGImage?, frame: CGRect) {
+        var box = bounds(of: bulb, pad: lit ? bulb.length * 0.4 : 3)
+        if bulb.behind { box.size.height = max(1, min(box.maxY, 1) - box.minY) }
+        let frame = snap(box.offsetBy(dx: -origin.x, dy: -origin.y), scale)
         let picture = image(size: frame.size, scale: scale) { ctx in
-            ctx.translateBy(x: -(frame.minX + strip.minX), y: -(frame.minY + strip.minY))
+            ctx.translateBy(x: -(frame.minX + origin.x), y: -(frame.minY + origin.y))
+            if bulb.behind { ctx.clip(to: aboveTheWindow) }
             let colour = theme.colours[bulb.group]
-            drawGlow(ctx, bulb, colour: colour)
-            drawBulb(ctx, bulb, colour: colour, socket: theme.wire, lit: true)
+            if lit {
+                drawGlow(ctx, bulb, colour: colour)
+                drawBulb(ctx, bulb, colour: colour, socket: theme.wire, lit: true)
+            } else {
+                shadow(ctx, down: 0.6, blur: 1.2, alpha: 0.35, scale: scale)
+                ctx.beginTransparencyLayer(auxiliaryInfo: nil)
+                drawBulb(ctx, bulb, colour: colour, socket: theme.wire, lit: false)
+                ctx.endTransparencyLayer()
+            }
         }
         return (picture, frame)
     }
 
-    /// The rectangle a bulb covers, plus `pad` all round (window-local, y down).
+    /// The tail's cable, drawn into a picture the size of `rect` (same coordinates as `cable`).
+    static func tailWire(_ cable: [WrapGeometry.CablePoint], twist: WrapGeometry.Twist, colour: RGB,
+                         rect: CGRect, scale: CGFloat) -> CGImage? {
+        image(size: rect.size, scale: scale) { ctx in
+            ctx.translateBy(x: -rect.minX, y: -rect.minY)
+            shadow(ctx, down: 0.6, blur: 1.2, alpha: 0.35, scale: scale)
+            drawCable(ctx, [cable], twist: twist, colour: colour)
+        }
+    }
+
+    /// The rectangle a bulb covers, plus `pad` all round (y down).
     static func bounds(of bulb: WrapGeometry.Bulb, pad: CGFloat) -> CGRect {
         let tip = CGPoint(x: bulb.attach.x + cos(bulb.angle) * bulb.length,
                           y: bulb.attach.y + sin(bulb.angle) * bulb.length)
@@ -70,6 +94,10 @@ enum BulbArt {
         return CGRect(x: min(bulb.attach.x, tip.x) - half, y: min(bulb.attach.y, tip.y) - half,
                       width: abs(tip.x - bulb.attach.x) + 2 * half, height: abs(tip.y - bulb.attach.y) + 2 * half)
     }
+
+    /// Everything above the window's top edge (y < 0 in window coordinates), where the back of the
+    /// coil can be seen.
+    private static let aboveTheWindow = CGRect(x: -100_000, y: -100_000, width: 200_000, height: 100_000)
 
     // MARK: Bulbs
 
@@ -154,13 +182,12 @@ enum BulbArt {
     /// A faint, tight wash of colour around a lit bulb's glass.
     private static func drawGlow(_ ctx: CGContext, _ bulb: WrapGeometry.Bulb, colour: RGB) {
         guard glowStrength > 0 else { return }
-        let reach = bulb.length * 0.55
         let centre = CGPoint(x: bulb.attach.x + cos(bulb.angle) * bulb.length * 0.6,
                              y: bulb.attach.y + sin(bulb.angle) * bulb.length * 0.6)
         let wash = CGGradient(colorsSpace: sRGB, colors: [colour.cg(glowStrength), colour.cg(0)] as CFArray,
                               locations: [0, 1])!
         ctx.drawRadialGradient(wash, startCenter: centre, startRadius: 0, endCenter: centre,
-                               endRadius: reach, options: [])
+                               endRadius: bulb.length * 0.55, options: [])
     }
 
     // MARK: Cable
@@ -168,39 +195,38 @@ enum BulbArt {
     /// The cable: two strands twisted round each other, like real string-light wire.
     ///
     /// Each strand weaves either side of the centre line. Where a strand is behind the other it's
-    /// drawn first and darker; where it's in front it's drawn on top with a thin sheen. At both
-    /// ends the cable fades, as if it carried on round the back of the window.
-    static func drawCable(_ ctx: CGContext, _ g: WrapGeometry, colour: RGB) {
-        guard let first = g.cable.first, let last = g.cable.last else { return }
+    /// drawn first and darker; where it's in front it's drawn on top with a thin sheen. `fades`
+    /// then rub out the ends where the cable goes round the back of the window.
+    static func drawCable(_ ctx: CGContext, _ runs: [[WrapGeometry.CablePoint]], twist t: WrapGeometry.Twist,
+                          colour: RGB, fades: [WrapGeometry.Fade] = []) {
+        guard !runs.isEmpty else { return }
         ctx.beginTransparencyLayer(auxiliaryInfo: nil)
         ctx.setLineCap(.round)
         ctx.setLineJoin(.round)
 
-        // Where each strand is at each cable point, and whether it's the front one there.
-        func strand(_ j: Int) -> [(p: CGPoint, depth: CGFloat)] {
-            g.cable.map { point in
+        typealias StrandPoint = (p: CGPoint, normal: CGVector, depth: CGFloat)
+        // Where strand `j` is at each point of `run`, and how far in front of the other strand.
+        func strand(_ run: [WrapGeometry.CablePoint], _ j: Int) -> [StrandPoint] {
+            run.map { point in
                 // A slow wobble in the twist, so it looks wound by hand rather than by machine.
-                let phase = 2 * .pi * point.s / g.twistPeriod + CGFloat(j) * .pi + 0.35 * sin(point.s * 0.045)
-                let offset = g.twistAmplitude * sin(phase)
-                return (CGPoint(x: point.p.x + point.outward.dx * offset, y: point.p.y + point.outward.dy * offset),
-                        cos(phase))
+                let phase = 2 * .pi * point.s / t.period + CGFloat(j) * .pi + 0.35 * sin(point.s * 0.045)
+                let offset = t.amplitude * sin(phase)
+                return (CGPoint(x: point.p.x + point.normal.dx * offset, y: point.p.y + point.normal.dy * offset),
+                        point.normal, cos(phase))
             }
         }
-        let strands = [strand(0), strand(1)]
+        let strands = runs.flatMap { [strand($0, 0), strand($0, 1)] }
 
-        /// Strokes the stretches of a strand whose depth passes `keep`, nudged `outward` points away
-        /// from the window.
-        func strokeRuns(_ points: [(p: CGPoint, depth: CGFloat)], where keep: (CGFloat) -> Bool,
-                        outward: CGFloat = 0) {
-            var run: [CGPoint] = []
+        /// Strokes the stretches of a strand whose depth passes `keep`, nudged `lift` points along the normal.
+        func strokeRuns(_ points: [StrandPoint], where keep: (CGFloat) -> Bool, lift: CGFloat = 0) {
+            var stretch: [CGPoint] = []
             func flush() {
-                if run.count > 1 { ctx.addLines(between: run) }
-                run.removeAll(keepingCapacity: true)
+                if stretch.count > 1 { ctx.addLines(between: stretch) }
+                stretch.removeAll(keepingCapacity: true)
             }
-            for (i, point) in points.enumerated() {
+            for point in points {
                 if keep(point.depth) {
-                    let n = g.cable[i].outward
-                    run.append(CGPoint(x: point.p.x + n.dx * outward, y: point.p.y + n.dy * outward))
+                    stretch.append(CGPoint(x: point.p.x + point.normal.dx * lift, y: point.p.y + point.normal.dy * lift))
                 } else {
                     flush()
                 }
@@ -211,29 +237,26 @@ enum BulbArt {
 
         // The halves of each strand that pass behind the other.
         ctx.setStrokeColor(colour.darker(0.4).cg())
-        ctx.setLineWidth(g.strandWidth)
+        ctx.setLineWidth(t.strandWidth)
         for s in strands { strokeRuns(s, where: { $0 < 0 }) }
         // The halves in front.
         ctx.setStrokeColor(colour.cg())
         for s in strands { strokeRuns(s, where: { $0 >= 0 }) }
-        // A thin sheen along the outer side of the front halves, where the light catches them.
+        // A thin sheen along the front halves, where the light catches them.
         ctx.setStrokeColor(colour.lighter(0.4).cg(0.55))
-        ctx.setLineWidth(g.strandWidth * 0.35)
-        for s in strands { strokeRuns(s, where: { $0 > 0.35 }, outward: g.strandWidth * 0.2) }
+        ctx.setLineWidth(t.strandWidth * 0.35)
+        for s in strands { strokeRuns(s, where: { $0 > 0.35 }, lift: t.strandWidth * 0.2) }
 
-        // Fade both ends. The ends run straight down the window's sides, so a gradient between the
-        // end point and the point `fadeLength` in from it does the job.
-        let inner = (start: g.cable.first { $0.s >= g.fadeLength }?.p ?? first.p,
-                     end: g.cable.last { $0.s <= last.s - g.fadeLength }?.p ?? last.p)
+        // Each fade rubs the cable out towards one end, along the line from `to` to `from`.
         let fade = CGGradient(colorsSpace: sRGB, colors: [RGB(0).cg(0), RGB(0).cg(1)] as CFArray, locations: [0, 1])!
-        let pad = g.twistAmplitude + g.strandWidth + 2
+        let pad = t.amplitude + t.strandWidth + 2
         ctx.setBlendMode(.destinationIn)
-        for (end, inside) in [(first.p, inner.start), (last.p, inner.end)] {
+        for f in fades {
             ctx.saveGState()
-            let box = CGRect(x: min(end.x, inside.x), y: min(end.y, inside.y),
-                             width: abs(end.x - inside.x), height: abs(end.y - inside.y)).insetBy(dx: -pad, dy: -pad)
+            let box = CGRect(x: min(f.from.x, f.to.x), y: min(f.from.y, f.to.y),
+                             width: abs(f.from.x - f.to.x), height: abs(f.from.y - f.to.y)).insetBy(dx: -pad, dy: -pad)
             ctx.clip(to: box)
-            ctx.drawLinearGradient(fade, start: end, end: inside, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
+            ctx.drawLinearGradient(fade, start: f.from, end: f.to, options: [.drawsBeforeStartLocation, .drawsAfterEndLocation])
             ctx.restoreGState()
         }
         ctx.setBlendMode(.normal)
@@ -255,6 +278,13 @@ enum BulbArt {
         ctx.interpolationQuality = .high
         draw(ctx)
         return ctx.makeImage()
+    }
+
+    /// `r` grown outward to the nearest whole pixels.
+    private static func snap(_ r: CGRect, _ scale: CGFloat) -> CGRect {
+        let x0 = floor(r.minX * scale) / scale, y0 = floor(r.minY * scale) / scale
+        let x1 = ceil(r.maxX * scale) / scale, y1 = ceil(r.maxY * scale) / scale
+        return CGRect(x: x0, y: y0, width: x1 - x0, height: y1 - y0)
     }
 
     /// A drop shadow `down` points below. Shadow offsets are measured in pixels with y up,

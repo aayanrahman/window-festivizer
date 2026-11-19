@@ -4,6 +4,7 @@ import AppKit
 final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     private let settings = Settings.shared
     private let tracker = WindowTracker()
+    private lazy var picker = WindowPicker(tracker: tracker)
     private var statusItem: NSStatusItem!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
@@ -41,58 +42,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
         menu.addItem(item(settings.enabled ? "Lights On" : "Lights Off", #selector(toggleEnabled),
                           checked: settings.enabled))
+        menu.addItem(item("Choose Windows…", #selector(chooseWindows), checked: false))
         menu.addItem(.separator())
 
         menu.addItem(submenu("Show On", showOnMenu()))
+        menu.addItem(submenu("Style", choices(WrapStyle.allCases, current: settings.style, title: \.title,
+                                              action: #selector(pickStyle(_:)))))
 
         let themes = NSMenu()
         themes.addItem(item("Mixed (different lights for each app)", #selector(pickTheme(_:)),
                             checked: settings.themeID == Theme.mixedID, value: Theme.mixedID))
         themes.addItem(.separator())
         for theme in Theme.all {
-            themes.addItem(item(theme.name, #selector(pickTheme(_:)),
-                                checked: settings.themeID == theme.id, value: theme.id))
+            themes.addItem(item(theme.name, #selector(pickTheme(_:)), checked: settings.themeID == theme.id, value: theme.id))
         }
         menu.addItem(submenu("Lights", themes))
 
-        let sizes = NSMenu()
-        for size in WrapSize.allCases {
-            sizes.addItem(item(size.title, #selector(pickSize(_:)), checked: settings.size == size, value: size.rawValue))
-        }
-        menu.addItem(submenu("Size", sizes))
-
-        let patterns = NSMenu()
-        for pattern in LightPattern.allCases {
-            patterns.addItem(item(pattern.title, #selector(pickPattern(_:)),
-                                  checked: settings.pattern == pattern, value: pattern.rawValue))
-        }
-        menu.addItem(submenu("Pattern", patterns))
+        menu.addItem(submenu("Size", choices(WrapSize.allCases, current: settings.size, title: \.title,
+                                             action: #selector(pickSize(_:)))))
+        menu.addItem(submenu("Pattern", choices(LightPattern.allCases, current: settings.pattern, title: \.title,
+                                                action: #selector(pickPattern(_:)))))
+        menu.addItem(item("Swinging Tail", #selector(toggleTail), checked: settings.tail))
         menu.addItem(.separator())
         menu.addItem(item("Quit Window Festivizer", #selector(quit), checked: false, key: "q"))
     }
 
-    /// All windows or just the front one, then a checkbox for every app seen with a window since
-    /// launch (plus any app already unticked, so it can be ticked again).
+    /// All windows, the front one, or the ones you choose; then a way to choose, and to start over.
     private func showOnMenu() -> NSMenu {
-        let menu = NSMenu()
-        for choice in ShowOn.allCases {
-            menu.addItem(item(choice.title, #selector(pickShowOn(_:)), checked: settings.showOn == choice,
-                              value: choice.rawValue))
-        }
+        let menu = choices(ShowOn.allCases, current: settings.showOn, title: \.title, action: #selector(pickShowOn(_:)))
         menu.addItem(.separator())
-        let header = NSMenuItem(title: "Apps", action: nil, keyEquivalent: "")
-        header.isEnabled = false
-        menu.addItem(header)
-        let apps = tracker.recentApps.union(settings.skippedApps).sorted {
-            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        menu.addItem(item("Choose Windows…", #selector(chooseWindows), checked: false))
+        if tracker.hasChoices {
+            menu.addItem(item("Forget My Choices", #selector(forgetChoices), checked: false))
         }
-        if apps.isEmpty {
-            let none = NSMenuItem(title: "No windows yet", action: nil, keyEquivalent: "")
-            none.isEnabled = false
-            menu.addItem(none)
-        }
-        for app in apps {
-            menu.addItem(item(app, #selector(toggleApp(_:)), checked: !settings.skippedApps.contains(app), value: app))
+        return menu
+    }
+
+    /// A submenu of mutually exclusive choices, with a checkmark on the current one.
+    private func choices<Choice: RawRepresentable & Equatable>(_ all: [Choice], current: Choice,
+                                                               title: KeyPath<Choice, String>,
+                                                               action: Selector) -> NSMenu where Choice.RawValue == String {
+        let menu = NSMenu()
+        for choice in all {
+            menu.addItem(item(choice[keyPath: title], action, checked: choice == current, value: choice.rawValue))
         }
         return menu
     }
@@ -112,20 +104,26 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         return item
     }
 
+    // MARK: Actions
+
     @objc private func toggleEnabled() { settings.enabled.toggle() }
+    @objc private func toggleTail() { settings.tail.toggle() }
     @objc private func quit() { NSApp.terminate(nil) }
+    @objc private func chooseWindows() { picker.open() }
+    @objc private func forgetChoices() { tracker.forgetChoices() }
 
     @objc private func pickShowOn(_ sender: NSMenuItem) {
-        if let raw = sender.representedObject as? String, let choice = ShowOn(rawValue: raw) { settings.showOn = choice }
+        guard let raw = sender.representedObject as? String, let choice = ShowOn(rawValue: raw) else { return }
+        // Picking "Windows I Choose" with nothing chosen yet goes straight to choosing.
+        if choice == .chosenWindows && !tracker.hasChoices {
+            picker.open()
+        } else {
+            settings.showOn = choice
+        }
     }
 
-    @objc private func toggleApp(_ sender: NSMenuItem) {
-        guard let app = sender.representedObject as? String else { return }
-        if settings.skippedApps.contains(app) {
-            settings.skippedApps.remove(app)
-        } else {
-            settings.skippedApps.insert(app)
-        }
+    @objc private func pickStyle(_ sender: NSMenuItem) {
+        if let raw = sender.representedObject as? String, let style = WrapStyle(rawValue: raw) { settings.style = style }
     }
 
     @objc private func pickTheme(_ sender: NSMenuItem) {

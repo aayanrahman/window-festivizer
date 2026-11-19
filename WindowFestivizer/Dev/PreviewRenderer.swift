@@ -3,17 +3,18 @@ import UniformTypeIdentifiers
 
 /// Developer option: `WindowFestivizer --render out.png`.
 ///
-/// Builds the real light layers (StripLayers, exactly as the app uses them), draws them onto
-/// pretend windows, and saves the picture as a PNG. Your real windows aren't touched, so it's a
-/// quick way to check a change to the art.
+/// Builds the real light layers (StripLayers and TailLayers, exactly as the app uses them), draws
+/// them onto pretend windows, and saves the picture as a PNG. Your real windows aren't touched, so
+/// it's a quick way to check a change to the art. Tails are shown hanging at rest.
 ///
-/// Rows, top to bottom: the three beats of the Festivizer pattern, each other theme on alternating
-/// dark and light windows, all at the default Regular size, then the Slim and Chunky sizes.
+/// Rows, top to bottom: Wrapped Around through the three beats of the Festivizer pattern, Laid on
+/// Top, each other theme in alternating styles on dark and light windows, then Slim and Chunky.
 enum PreviewRenderer {
     private struct Row {
         let label: String
+        let style: WrapStyle
         let theme: Theme
-        let wrap: WrapSize
+        var wrap: WrapSize = .regular
         let beat: Int
         let darkWindow: Bool
     }
@@ -22,20 +23,21 @@ enum PreviewRenderer {
         let scale: CGFloat = 2
         let windowSize = CGSize(width: 640, height: 84)
         let rows = [
-            Row(label: "Festivizer, beat 1 (green off)", theme: .festivizer, wrap: .regular, beat: 0, darkWindow: true),
-            Row(label: "Festivizer, beat 2 (blue off)", theme: .festivizer, wrap: .regular, beat: 1, darkWindow: true),
-            Row(label: "Festivizer, beat 3 (yellow off)", theme: .festivizer, wrap: .regular, beat: 2, darkWindow: true),
-            Row(label: "Classic", theme: .classic, wrap: .regular, beat: 0, darkWindow: false),
-            Row(label: "RED", theme: .red, wrap: .regular, beat: 1, darkWindow: true),
-            Row(label: "BLU", theme: .blu, wrap: .regular, beat: 2, darkWindow: false),
-            Row(label: "Warm White", theme: .warmWhite, wrap: .regular, beat: 0, darkWindow: true),
-            Row(label: "Pastel", theme: .pastel, wrap: .regular, beat: 1, darkWindow: false),
-            Row(label: "Slim size", theme: .festivizer, wrap: .slim, beat: 0, darkWindow: true),
-            Row(label: "Chunky size", theme: .classic, wrap: .chunky, beat: 2, darkWindow: false),
+            Row(label: "Wrapped Around, beat 1 (green off)", style: .wrapped, theme: .festivizer, beat: 0, darkWindow: true),
+            Row(label: "Wrapped Around, beat 2 (blue off)", style: .wrapped, theme: .festivizer, beat: 1, darkWindow: true),
+            Row(label: "Wrapped Around, beat 3 (yellow off)", style: .wrapped, theme: .festivizer, beat: 2, darkWindow: true),
+            Row(label: "Laid on Top", style: .laidOnTop, theme: .festivizer, beat: 0, darkWindow: true),
+            Row(label: "Classic, Wrapped Around", style: .wrapped, theme: .classic, beat: 1, darkWindow: false),
+            Row(label: "RED, Laid on Top", style: .laidOnTop, theme: .red, beat: 2, darkWindow: true),
+            Row(label: "BLU, Wrapped Around", style: .wrapped, theme: .blu, beat: 0, darkWindow: false),
+            Row(label: "Warm White, Wrapped Around", style: .wrapped, theme: .warmWhite, beat: 1, darkWindow: true),
+            Row(label: "Pastel, Laid on Top", style: .laidOnTop, theme: .pastel, beat: 2, darkWindow: false),
+            Row(label: "Slim", style: .wrapped, theme: .festivizer, wrap: .slim, beat: 0, darkWindow: true),
+            Row(label: "Chunky", style: .wrapped, theme: .classic, wrap: .chunky, beat: 2, darkWindow: false),
         ]
-        let rowHeight: CGFloat = 150
+        let rowHeight: CGFloat = 190
         let margin: CGFloat = 48
-        let canvas = CGSize(width: windowSize.width + 2 * margin, height: rowHeight * CGFloat(rows.count))
+        let canvas = CGSize(width: windowSize.width + 2 * margin + 110, height: rowHeight * CGFloat(rows.count))
 
         guard let ctx = CGContext(data: nil, width: Int(canvas.width * scale), height: Int(canvas.height * scale),
                                   bitsPerComponent: 8, bytesPerRow: 0, space: BulbArt.sRGB,
@@ -49,16 +51,21 @@ enum PreviewRenderer {
             let rowTop = canvas.height - CGFloat(r) * rowHeight
             drawLabel(row.label, at: CGPoint(x: margin, y: rowTop - 28), ctx)
             // The pretend window's top-left corner.
-            let corner = CGPoint(x: margin, y: rowTop - 62)
+            let corner = CGPoint(x: margin, y: rowTop - 72)
             drawMockWindow(ctx, corner: corner, size: windowSize, dark: row.darkWindow)
 
-            let g = WrapGeometry(windowSize: windowSize, scale: row.wrap.scale)
+            let g = WrapGeometry(windowSize: windowSize, style: row.style, scale: row.wrap.scale, tail: true)
             let strip = StripLayers(geometry: g, theme: row.theme, scale: scale)
             strip.light(beat: row.beat, pattern: .festivizer, animated: false)
-            ctx.saveGState()
-            ctx.translateBy(x: corner.x + g.stripRect.minX, y: corner.y - g.stripRect.maxY)
-            strip.root.render(in: ctx)
-            ctx.restoreGState()
+            draw(strip.root, at: g.stripRect, corner: corner, ctx)
+
+            if let t = g.tail {
+                let chain = SwingingTail(anchor: t.anchor, lead: t.lead, segments: t.segments, segmentLength: t.segmentLength)
+                let tail = TailLayers(tail: t, twist: g.twist, theme: row.theme, scale: scale)
+                tail.layout(points: chain.points, in: t.rect)
+                tail.light(beat: row.beat, pattern: .festivizer, animated: false)
+                draw(tail.root, at: t.rect, corner: corner, ctx)
+            }
         }
 
         guard let image = ctx.makeImage(),
@@ -70,6 +77,15 @@ enum PreviewRenderer {
         CGImageDestinationAddImage(out, image, nil)
         CGImageDestinationFinalize(out)
         print("Saved \(path)")
+    }
+
+    /// Render a layer tree covering `rect` (window-local, y down) of the pretend window whose
+    /// top-left corner is at `corner` in the picture.
+    private static func draw(_ layer: CALayer, at rect: CGRect, corner: CGPoint, _ ctx: CGContext) {
+        ctx.saveGState()
+        ctx.translateBy(x: corner.x + rect.minX, y: corner.y - rect.maxY)
+        layer.render(in: ctx)
+        ctx.restoreGState()
     }
 
     /// A rough macOS window: rounded corners, a title bar with the three buttons, a few lines of "text".

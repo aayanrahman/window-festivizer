@@ -1,11 +1,11 @@
 # Window Festivizer
 
-A macOS menu-bar app that wraps the top of your windows in a string of festive lights. A twisted
-cable hugs each window's top edge and wraps round both corners, with slim bulbs splayed along it.
-The lights blink the way TF2's Festivizer does: three colours, two lit at a time, with the dark one
-moving along every beat.
+A macOS menu-bar app that wraps the top of your windows in a string of festive lights, the way
+TF2's Festivizer wraps a gun: a messy coil of twisted cable with slim bulbs sticking out at every
+angle, and a loose end swinging off the corner. The lights blink like the Festivizer's too: three
+colours, two lit at a time, with the dark one moving along every beat.
 
-![The lights on pretend windows, in each theme and size](docs/preview.png)
+![The lights on pretend windows, in each style, theme and size](docs/preview.png)
 
 Inspired by Team Fortress 2's Festivizer, and by [Window Scarves](https://github.com/fiof25/window-scarves)
 by fiof25 (itself inspired by Sara Gordić's Window Sweaters). Window Festivizer is written from scratch
@@ -28,29 +28,39 @@ team under the target's **Signing & Capabilities** tab.
 ## The menu
 
 - **Lights On / Off**
-- **Show On**: All Windows or Front Window Only, then a checkbox for each app. Untick an app to leave
-  its windows bare.
+- **Choose Windows…**: dims the screen and spotlights the window under the pointer. Click the
+  windows you want lights on: a click lights every window of that app (remembered across restarts),
+  Option-click lights just that one window (until you quit). Click a lit window to take its lights
+  off. It stays open until you press Done, Return or Esc.
+- **Show On**: All Windows, Front Window Only, or Windows I Choose; plus Choose Windows and Forget
+  My Choices
+- **Style**: Wrapped Around (a loose, uneven coil wound round the top of the window) or Laid on Top
+  (a cable along the window's top edge, like a scarf)
 - **Lights**: Festivizer (green, blue, yellow), Classic (red, amber, lime), RED, BLU, Warm White,
   Pastel, or Mixed (a different set for each app)
 - **Size**: Slim, Regular (the default) or Chunky
 - **Pattern**: Festivizer (two of three colours lit) or Steady
+- **Swinging Tail**: the end of the cable hangs off the window's top-right corner and swings when
+  you drag the window
 
-Full-screen windows, popovers, sheets and small dialogs go without lights. The cable sits on the
-window's edge, so it never covers the red, yellow and green buttons, and clicks always pass through.
+Full-screen windows, popovers, sheets and small dialogs go without lights. Nothing covers the red,
+yellow and green buttons, and clicks always pass straight through the lights.
 
 ## How it works
 
 | File | What it does |
 | --- | --- |
 | `App/WindowFestivizerApp.swift` | Entry point. Starts the menu-bar app, or handles `--render`. |
-| `App/AppDelegate.swift` | The menu-bar icon and its menu, including Show On. |
-| `App/Settings.swift` | Menu choices, saved in UserDefaults. Sizes are defined here. |
-| `Windows/WindowTracker.swift` | Reads the window list about 7 times a second (60 while something moves), decides which windows get lights, keeps the lights stacked above them, and ticks the blink beat. |
-| `Windows/LightsOverlay.swift` | One window's lights, in an overlay covering just the strip along its top edge. |
+| `App/AppDelegate.swift` | The menu-bar icon and its menu. |
+| `App/Settings.swift` | Menu choices and chosen apps, saved in UserDefaults. Sizes and styles are defined here. |
+| `Windows/WindowTracker.swift` | Reads the window list about 7 times a second (60 while something moves or a tail swings), decides which windows get lights, keeps the lights stacked above them, and ticks the blink beat. |
+| `Windows/WindowPicker.swift` | Choose Windows: the dimmed sheet, the spotlight and label, and the banner. |
+| `Windows/LightsOverlay.swift` | One window's lights: an overlay for the strip along its top and one for its tail. |
 | `Windows/OverlayWindow.swift` | The see-through, click-through window the lights are drawn in. |
-| `Lights/WrapGeometry.swift` | Where everything goes: the cable along the window's outline, and bulbs at slightly uneven spacing and angles so it looks hung by hand. |
+| `Lights/WrapGeometry.swift` | Where everything goes, for both styles. Wrapped Around treats the top of the title bar as a pole and winds a wandering helix round it; the back of each turn shows just above the window's edge. |
 | `Lights/BulbArt.swift` | Draws the twisted cable and the bulbs with Core Graphics, in TF2's painted style. There are no image files. |
-| `Lights/LightLayers.swift` | Turns the drawings into Core Animation layers: one picture for the cable and unlit bulbs, plus each lit bulb on top, grouped by colour. |
+| `Lights/LightLayers.swift` | Turns the drawings into Core Animation layers, grouped by colour so a blink is a few opacity changes. |
+| `Lights/SwingingTail.swift` | Verlet rope physics for the tail, with a little stiffness so it curls rather than dangles. |
 | `Lights/FestivizerPattern.swift` | The blink rule: on beat *n*, colour *n mod 3* is dark. |
 | `Lights/Theme.swift` | The colour sets. |
 | `Dev/PreviewRenderer.swift` | The `--render` developer option below. |
@@ -60,8 +70,9 @@ bitmap whose edges sit on whole pixels for your display. Nothing is drawn once a
 scaled, and there are no large blurred glows.
 
 Why it's light on your Mac: the blink is a few opacity changes per window per beat, animated by
-Core Animation, and nothing is redrawn unless a window is resized or a setting changes. Idle cost is
-mostly reading the window list, about 2% of one CPU core on an M1 with 9 windows open.
+Core Animation, and nothing is redrawn unless a window is resized, a setting changes, or a tail is
+swinging (it settles a few seconds after you let go). Idle cost is mostly reading the window list,
+about 2% of one CPU core on an M1 with 9 windows open.
 
 ## Developer options
 
@@ -75,7 +86,7 @@ build/DerivedData/Build/Products/Release/WindowFestivizer.app/Contents/MacOS/Win
 Log when and why the tracker speeds up: set the environment variable `FESTIVIZER_LOG=1`
 (in Xcode: Product > Scheme > Edit Scheme > Run > Arguments > Environment Variables).
 
-Clear saved settings: `defaults delete com.aayanrahman.windowfestivizer`
+Clear saved settings and chosen apps: `defaults delete com.aayanrahman.windowfestivizer`
 
 ## Known issues
 
@@ -83,7 +94,7 @@ Clear saved settings: `defaults delete com.aayanrahman.windowfestivizer`
   frame later. Window Scarves avoids this by lifting the overlay just above normal windows while
   the pointer is over it.
 - During Show Desktop and Mission Control, the lights catch up with the windows a moment late.
-- The cable assumes a 12-point window corner. Windows with much rounder corners show a small gap
+- Laid on Top assumes a 12-point window corner. Windows with much rounder corners show a small gap
   at the corners.
 
 ## Roadmap

@@ -9,9 +9,24 @@ enum WrapSize: String, CaseIterable {
 
     var scale: CGFloat {
         switch self {
-        case .slim: return 1
-        case .regular: return 1.3
-        case .chunky: return 1.65
+        case .slim: return 1.25
+        case .regular: return 1.6
+        case .chunky: return 2
+        }
+    }
+}
+
+/// How the lights are put on a window. See WrapGeometry for how each is laid out.
+enum WrapStyle: String, CaseIterable {
+    /// Wound round the top of the window in an uneven coil, the way the Festivizer winds them round a gun.
+    case wrapped
+    /// Laid along the window's top edge like a scarf.
+    case laidOnTop
+
+    var title: String {
+        switch self {
+        case .wrapped: return "Wrapped Around"
+        case .laidOnTop: return "Laid on Top"
         }
     }
 }
@@ -36,11 +51,14 @@ enum ShowOn: String, CaseIterable {
     case allWindows
     /// Only the window you're working in.
     case frontWindow
+    /// Only what you picked with Choose Windows: whole apps, or single windows.
+    case chosenWindows
 
     var title: String {
         switch self {
         case .allWindows: return "All Windows"
         case .frontWindow: return "Front Window Only"
+        case .chosenWindows: return "Only Windows I Choose"
         }
     }
 }
@@ -60,18 +78,24 @@ final class Settings {
     var enabled: Bool { didSet { save(enabled, "enabled") } }
     var themeID: String { didSet { save(themeID, "theme") } }
     var size: WrapSize { didSet { save(size.rawValue, "size") } }
+    var style: WrapStyle { didSet { save(style.rawValue, "style") } }
+    /// Whether the end of the cable hangs off the window's right corner and swings.
+    var tail: Bool { didSet { save(tail, "tail") } }
     var pattern: LightPattern { didSet { save(pattern.rawValue, "pattern") } }
     var showOn: ShowOn { didSet { save(showOn.rawValue, "showOn") } }
-    /// Apps whose windows stay bare, by name (as shown in the menu, like "Safari").
-    var skippedApps: Set<String> { didSet { save(skippedApps.sorted(), "skippedApps") } }
+    /// Apps picked with Choose Windows, by name (like "Safari"). With Show On set to Windows I
+    /// Choose, every window of these apps gets lights. Remembered across restarts.
+    var chosenApps: Set<String> { didSet { save(chosenApps.sorted(), "chosenApps") } }
 
     private init() {
         enabled = defaults.object(forKey: "enabled") as? Bool ?? true
         themeID = defaults.string(forKey: "theme") ?? Theme.festivizer.id
         size = defaults.string(forKey: "size").flatMap(WrapSize.init(rawValue:)) ?? .regular
+        style = defaults.string(forKey: "style").flatMap(WrapStyle.init(rawValue:)) ?? .wrapped
+        tail = defaults.object(forKey: "tail") as? Bool ?? true
         pattern = defaults.string(forKey: "pattern").flatMap(LightPattern.init(rawValue:)) ?? .festivizer
         showOn = defaults.string(forKey: "showOn").flatMap(ShowOn.init(rawValue:)) ?? .allWindows
-        skippedApps = Set(defaults.stringArray(forKey: "skippedApps") ?? [])
+        chosenApps = Set(defaults.stringArray(forKey: "chosenApps") ?? [])
     }
 
     private func save(_ value: Any, _ key: String) {
