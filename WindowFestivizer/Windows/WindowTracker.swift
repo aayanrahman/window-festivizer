@@ -4,7 +4,7 @@ import AppKit
 ///
 /// Like Window Scarves, it only uses public APIs that need no permissions: CGWindowListCopyWindowInfo
 /// says where every window is and how they're stacked. It looks about 7 times a second while nothing
-/// is happening, and 60 times a second while something is moving or a tail is still swinging.
+/// is happening, and 60 times a second while something is moving.
 final class WindowTracker: NSObject {
     private let settings = Settings.shared
     private let myPID = getpid()
@@ -15,7 +15,6 @@ final class WindowTracker: NSObject {
     private var isFast = false
     /// Keep looking quickly until this time.
     private var fastUntil: CFTimeInterval = 0
-    private var lastTick = CACurrentMediaTime()
     private var mouseMonitor: Any?
 
     /// Where each decorated window was at the last look, to notice movement.
@@ -26,6 +25,9 @@ final class WindowTracker: NSObject {
 
     /// Which beat of the blink pattern we're on. Shared by every window so they all blink together.
     private(set) var beat = 0
+
+    /// Every app seen with a window since launch, for the checkboxes in the Show On menu.
+    private(set) var recentApps: Set<String> = []
 
     private static let fastInterval = 1.0 / 60
     /// Asking macOS for the window list is most of this app's idle cost, so while nothing is
@@ -40,6 +42,15 @@ final class WindowTracker: NSObject {
         "TextInputMenuAgent", "universalAccessAuthWarn", "SecurityAgent", "CoreServicesUIAgent",
         "UserNotificationCenter",
     ]
+
+    /// This app's own names as the window list reports them. Windows from any copy of this app are
+    /// ignored, so two copies (say, one run from Xcode and one installed) never decorate each other's
+    /// lights or fight over stacking.
+    private let ownNames: Set<String> = {
+        let info = Bundle.main.infoDictionary ?? [:]
+        return Set([ProcessInfo.processInfo.processName, info["CFBundleDisplayName"] as? String,
+                    info["CFBundleName"] as? String].compactMap { $0 })
+    }()
 
     private struct Target {
         let id: CGWindowID
@@ -84,11 +95,13 @@ final class WindowTracker: NSObject {
         removeAll()
     }
 
-    /// Settings changed: take every window's lights off and put new ones on.
-    func rebuildAll() {
-        removeAll()
-        BulbArt.clearCache()
+    /// Settings changed. Each window's lights redraw themselves if their theme or size changed
+    /// (LightsOverlay.update checks), windows that should no longer have lights lose them, and a new
+    /// pattern takes effect straight away rather than at the next beat.
+    func settingsChanged() {
         refresh()
+        let pattern = settings.pattern
+        for overlay in overlays.values { overlay.showBeat(beat, pattern: pattern) }
     }
 
     private func removeAll() {
@@ -131,20 +144,12 @@ final class WindowTracker: NSObject {
 
     @objc private func tick() {
         let now = CACurrentMediaTime()
-        let dt = CGFloat(min(now - lastTick, 1.0 / 30))
-        lastTick = now
-
         // With the button held, a drag could start any moment.
         if NSEvent.pressedMouseButtons & 1 != 0 { fastUntil = max(fastUntil, now + 0.3) }
 
         refresh()
 
-        var swinging = false
-        for overlay in overlays.values {
-            if overlay.step(dt: dt) { swinging = true }
-        }
-
-        let wantFast = swinging || now < fastUntil
+        let wantFast = now < fastUntil
         if wantFast != isFast { setSpeed(fast: wantFast) }
     }
 
@@ -180,7 +185,7 @@ final class WindowTracker: NSObject {
 
             guard info[kCGWindowLayer] as? Int == 0, pid != myPID else { continue }
             let owner = info[kCGWindowOwnerName] as? String ?? ""
-            guard !Self.ignoredOwners.contains(owner) else { continue }
+            guard !Self.ignoredOwners.contains(owner), !ownNames.contains(owner) else { continue }
             if let alpha = info[kCGWindowAlpha] as? Double, alpha < 0.1 { continue }
             guard let bounds = info[kCGWindowBounds] as? NSDictionary,
                   let frame = CGRect(dictionaryRepresentation: bounds as CFDictionary),
@@ -195,6 +200,12 @@ final class WindowTracker: NSObject {
             if overlays[w.id] == nil, isPopover(w, above: windows[(k + 1)...]) { continue }
             targets.append(w)
         }
+        recentApps.formUnion(targets.map(\.owner))
+
+        // The Show On menu: only the window in front (if its app is ticked), or every ticked app.
+        if settings.showOn == .frontWindow { targets = Array(targets.prefix(1)) }
+        let skipped = settings.skippedApps
+        targets.removeAll { skipped.contains($0.owner) }
 
         targets = targets.filter { t in
             if overlays[t.id] != nil { return true }
@@ -220,13 +231,14 @@ final class WindowTracker: NSObject {
             fastUntil = max(fastUntil, now + 0.5)
         }
 
-        // Windows that have gone (closed, minimised, or on another Space) lose their lights.
+        // Windows that have gone (closed, minimised, on another Space) or that the Show On menu now
+        // leaves out lose their lights.
         for (id, overlay) in overlays where frames[id] == nil {
             overlay.close()
             overlays[id] = nil
         }
 
-        let wrap = settings.size, swing = settings.swing, pattern = settings.pattern
+        let wrap = settings.size, pattern = settings.pattern
         for t in targets {
             let overlay = overlays[t.id] ?? {
                 let made = LightsOverlay(targetID: t.id)
@@ -234,7 +246,7 @@ final class WindowTracker: NSObject {
                 return made
             }()
             overlay.update(frame: t.frame, theme: settings.theme(forApp: t.owner), wrap: wrap,
-                           swing: swing, beat: beat, pattern: pattern)
+                           beat: beat, pattern: pattern)
             keepAbove(overlay, t, stackIndex: stackIndex, ownerAt: ownerAt, now: now)
         }
     }

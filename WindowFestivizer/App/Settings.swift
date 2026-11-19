@@ -1,20 +1,17 @@
 import CoreGraphics
 import Foundation
 
-/// How chunky the wrap is.
-///
-/// The number is the radius of the imaginary pole the lights spiral around, in points. Everything
-/// else (bulb size, glow, spacing between turns) scales from it.
+/// How chunky the lights are. Everything (bulb length, wire thickness, spacing) scales from `scale`.
 enum WrapSize: String, CaseIterable {
     case slim, regular, chunky
 
     var title: String { rawValue.capitalized }
 
-    var radius: CGFloat {
+    var scale: CGFloat {
         switch self {
-        case .slim: return 8
-        case .regular: return 11
-        case .chunky: return 15
+        case .slim: return 1
+        case .regular: return 1.3
+        case .chunky: return 1.65
         }
     }
 }
@@ -30,6 +27,20 @@ enum LightPattern: String, CaseIterable {
         switch self {
         case .festivizer: return "Festivizer (two of three colours lit)"
         case .steady: return "Steady"
+        }
+    }
+}
+
+/// Which windows get lights, before the per-app checkboxes are applied.
+enum ShowOn: String, CaseIterable {
+    case allWindows
+    /// Only the window you're working in.
+    case frontWindow
+
+    var title: String {
+        switch self {
+        case .allWindows: return "All Windows"
+        case .frontWindow: return "Front Window Only"
         }
     }
 }
@@ -50,14 +61,17 @@ final class Settings {
     var themeID: String { didSet { save(themeID, "theme") } }
     var size: WrapSize { didSet { save(size.rawValue, "size") } }
     var pattern: LightPattern { didSet { save(pattern.rawValue, "pattern") } }
-    var swing: Bool { didSet { save(swing, "swing") } }
+    var showOn: ShowOn { didSet { save(showOn.rawValue, "showOn") } }
+    /// Apps whose windows stay bare, by name (as shown in the menu, like "Safari").
+    var skippedApps: Set<String> { didSet { save(skippedApps.sorted(), "skippedApps") } }
 
     private init() {
         enabled = defaults.object(forKey: "enabled") as? Bool ?? true
         themeID = defaults.string(forKey: "theme") ?? Theme.festivizer.id
-        size = defaults.string(forKey: "size").flatMap(WrapSize.init(rawValue:)) ?? .slim
+        size = defaults.string(forKey: "size").flatMap(WrapSize.init(rawValue:)) ?? .regular
         pattern = defaults.string(forKey: "pattern").flatMap(LightPattern.init(rawValue:)) ?? .festivizer
-        swing = defaults.object(forKey: "swing") as? Bool ?? true
+        showOn = defaults.string(forKey: "showOn").flatMap(ShowOn.init(rawValue:)) ?? .allWindows
+        skippedApps = Set(defaults.stringArray(forKey: "skippedApps") ?? [])
     }
 
     private func save(_ value: Any, _ key: String) {

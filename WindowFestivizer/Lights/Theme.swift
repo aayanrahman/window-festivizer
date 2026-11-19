@@ -25,27 +25,38 @@ struct RGB: Equatable {
     func cg(_ alpha: CGFloat = 1) -> CGColor { CGColor(srgbRed: r, green: g, blue: b, alpha: alpha) }
 }
 
-/// One set of lights: three bulb colours and the colour of the wire.
+/// One set of lights: three bulb colours and the colour of the wire (and sockets).
 ///
 /// It's always exactly three colours, because the Festivizer pattern works in threes: bulb 0 is
 /// colour 0, bulb 1 colour 1, bulb 2 colour 2, bulb 3 colour 0 again, and so on.
+///
+/// The colours are a little softer than pure neon, closer to TF2's painted look.
 struct Theme: Equatable {
     let id: String
     let name: String
     let colours: [RGB]
     let wire: RGB
 
+    /// TF2's usual dark green-grey cable.
+    private static let festiveWire = RGB(0x34433A)
+
     /// The green, blue and yellow from the Festivizer tool demo.
     static let festivizer = Theme(id: "festivizer", name: "Festivizer (green, blue, yellow)",
-                                  colours: [RGB(0x72FF5C), RGB(0x5CD3FF), RGB(0xFFE04D)], wire: RGB(0x1C251B))
-    static let red = Theme(id: "red", name: "RED (red, amber, warm white)",
-                           colours: [RGB(0xFF4234), RGB(0xFF9D2B), RGB(0xFFE6BD)], wire: RGB(0x2B1A16))
-    static let blu = Theme(id: "blu", name: "BLU (blue, cyan, cool white)",
-                           colours: [RGB(0x3D86FF), RGB(0x5FE4FF), RGB(0xE2F2FF)], wire: RGB(0x172029))
-    static let classic = Theme(id: "classic", name: "Classic (red, green, gold)",
-                               colours: [RGB(0xFF3A3A), RGB(0x38DD62), RGB(0xFFC63A)], wire: RGB(0x1B2318))
+                                  colours: [RGB(0x7EE04F), RGB(0x55C2F2), RGB(0xF7D447)], wire: festiveWire)
+    /// The red, amber and lime of the Festivizer's item icon.
+    static let classic = Theme(id: "classic", name: "Classic (red, amber, lime)",
+                               colours: [RGB(0xE8432E), RGB(0xF4A02F), RGB(0x9AD63A)], wire: festiveWire)
+    static let red = Theme(id: "red", name: "RED (red, orange, warm white)",
+                           colours: [RGB(0xD9412E), RGB(0xEE8A2D), RGB(0xF8E2B2)], wire: RGB(0x3E3330))
+    static let blu = Theme(id: "blu", name: "BLU (blue, teal, cool white)",
+                           colours: [RGB(0x4A88D9), RGB(0x46BFD3), RGB(0xE2EFFA)], wire: RGB(0x2F3A45))
+    static let warmWhite = Theme(id: "warm", name: "Warm White",
+                                 colours: [RGB(0xFFE3A8), RGB(0xFFD27F), RGB(0xFFEFCF)], wire: festiveWire)
+    /// Fairy-light pastels on a cream wire.
+    static let pastel = Theme(id: "pastel", name: "Pastel (pink, mint, butter)",
+                              colours: [RGB(0xF4A6C1), RGB(0x9EDFC4), RGB(0xFBE09A)], wire: RGB(0xD8CFBF))
 
-    static let all: [Theme] = [festivizer, red, blu, classic]
+    static let all: [Theme] = [festivizer, classic, red, blu, warmWhite, pastel]
 
     /// Not a theme itself: "give each app its own theme".
     static let mixedID = "mixed"
