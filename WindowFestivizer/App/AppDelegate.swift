@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Any change in the menu is applied to every window straight away.
         settings.onChange = { [weak self] in self?.tracker.settingsChanged() }
         tracker.start()
+        if settings.enabled { SoundPlayer.shared.play(.crate) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -63,6 +64,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         menu.addItem(submenu("Pattern", choices(LightPattern.allCases, current: settings.pattern, title: \.title,
                                                 action: #selector(pickPattern(_:)))))
         menu.addItem(item("Swinging Tail", #selector(toggleTail), checked: settings.tail))
+        menu.addItem(item("Sounds", #selector(toggleSounds), checked: settings.sounds))
         menu.addItem(.separator())
         menu.addItem(item("Quit Window Festivizer", #selector(quit), checked: false, key: "q"))
     }
@@ -106,8 +108,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     // MARK: Actions
 
-    @objc private func toggleEnabled() { settings.enabled.toggle() }
-    @objc private func toggleTail() { settings.tail.toggle() }
+    @objc private func toggleEnabled() {
+        settings.enabled.toggle()
+        if settings.enabled { SoundPlayer.shared.play(.crate) }
+    }
+
+    @objc private func toggleTail() {
+        settings.tail.toggle()
+        SoundPlayer.shared.play(.donk)
+    }
+
+    @objc private func toggleSounds() {
+        settings.sounds.toggle()
+        // A quick sample when they come back on, so you know they work.
+        SoundPlayer.shared.play(.stomp)
+    }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func chooseWindows() { picker.open() }
     @objc private func forgetChoices() { tracker.forgetChoices() }
@@ -124,19 +139,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func pickStyle(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let style = WrapStyle(rawValue: raw) { settings.style = style }
+        SoundPlayer.shared.play(.donk)
     }
 
     @objc private func pickTheme(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? String { settings.themeID = id }
+        SoundPlayer.shared.play(.donk)
     }
 
     @objc private func pickSize(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let size = WrapSize(rawValue: raw) { settings.size = size }
+        SoundPlayer.shared.play(.donk)
     }
 
     @objc private func pickPattern(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let pattern = LightPattern(rawValue: raw) {
             settings.pattern = pattern
         }
+        SoundPlayer.shared.play(.donk)
     }
 }

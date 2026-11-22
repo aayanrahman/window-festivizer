@@ -54,6 +54,7 @@ final class WindowPicker {
     func clicked(justThisWindow: Bool) {
         guard let target = tracker.window(at: Self.global(NSEvent.mouseLocation)) else { return }
         tracker.toggle(target, justThisWindow: justThisWindow)
+        SoundPlayer.shared.play(target.isChosen ? .stomp : .achievement)
         pointerMoved()
     }
 

@@ -1,9 +1,10 @@
 # Window Festivizer
 
 A macOS menu-bar app that wraps the top of your windows in a string of festive lights, the way
-TF2's Festivizer wraps a gun: a messy coil of twisted cable with slim bulbs sticking out at every
-angle, and a loose end swinging off the corner. The lights blink like the Festivizer's too: three
-colours, two lit at a time, with the dark one moving along every beat.
+TF2's Festivizer wraps a gun: a messy coil of twisted cable running from a taped-on battery pack,
+capsule bulbs sticking out at every angle, and a loose end swinging off the corner. The lights blink
+like the Festivizer's too: three colours, two lit at a time, with the dark one moving along every
+beat. And it plays TF2 sound effects.
 
 ![The lights on pretend windows, in each style, theme and size](docs/preview.png)
 
@@ -36,12 +37,26 @@ team under the target's **Signing & Capabilities** tab.
   My Choices
 - **Style**: Wrapped Around (a loose, uneven coil wound round the top of the window) or Laid on Top
   (a cable along the window's top edge, like a scarf)
-- **Lights**: Festivizer (green, blue, yellow), Classic (red, amber, lime), RED, BLU, Warm White,
+- **Lights**: BLU (green, light blue, yellow; the default), RED (green, yellow, red), Warm White,
   Pastel, or Mixed (a different set for each app)
 - **Size**: Slim, Regular (the default) or Chunky
 - **Pattern**: Festivizer (two of three colours lit) or Steady
 - **Swinging Tail**: the end of the cable hangs off the window's top-right corner and swings when
   you drag the window
+- **Sounds**: the TF2 sound effects below
+
+## Sounds
+
+| When | Sound |
+| --- | --- |
+| The lights switch on, including at launch | Item open crate |
+| You choose a window in Choose Windows | Achievement earned |
+| You take a window's lights off | Mantreads |
+| You change Style, Lights, Size, Pattern or the tail | Doubledonk |
+
+The files are in `WindowFestivizer/Sounds`, downloaded from the
+[Team Fortress Wiki](https://wiki.teamfortress.com/wiki/Category:Audio_cues). To use different ones,
+replace a file keeping its name, or change the names in `App/Sounds.swift`.
 
 Full-screen windows, popovers, sheets and small dialogs go without lights. Nothing covers the red,
 yellow and green buttons, and clicks always pass straight through the lights.
@@ -53,12 +68,13 @@ yellow and green buttons, and clicks always pass straight through the lights.
 | `App/WindowFestivizerApp.swift` | Entry point. Starts the menu-bar app, or handles `--render`. |
 | `App/AppDelegate.swift` | The menu-bar icon and its menu. |
 | `App/Settings.swift` | Menu choices and chosen apps, saved in UserDefaults. Sizes and styles are defined here. |
+| `App/Sounds.swift` | Which sound plays when, and the player. The files are in `Sounds/`. |
 | `Windows/WindowTracker.swift` | Reads the window list about 7 times a second (60 while something moves or a tail swings), decides which windows get lights, keeps the lights stacked above them, and ticks the blink beat. |
 | `Windows/WindowPicker.swift` | Choose Windows: the dimmed sheet, the spotlight and label, and the banner. |
 | `Windows/LightsOverlay.swift` | One window's lights: an overlay for the strip along its top and one for its tail. |
 | `Windows/OverlayWindow.swift` | The see-through, click-through window the lights are drawn in. |
 | `Lights/WrapGeometry.swift` | Where everything goes, for both styles. Wrapped Around treats the top of the title bar as a pole and winds a wandering helix round it; the back of each turn shows just above the window's edge. |
-| `Lights/BulbArt.swift` | Draws the twisted cable and the bulbs with Core Graphics, in TF2's painted style. There are no image files. |
+| `Lights/BulbArt.swift` | Draws the twisted cable, the capsule bulbs and the battery pack with Core Graphics, in TF2's painted style. There are no image files. |
 | `Lights/LightLayers.swift` | Turns the drawings into Core Animation layers, grouped by colour so a blink is a few opacity changes. |
 | `Lights/SwingingTail.swift` | Verlet rope physics for the tail, with a little stiffness so it curls rather than dangles. |
 | `Lights/FestivizerPattern.swift` | The blink rule: on beat *n*, colour *n mod 3* is dark. |
@@ -100,5 +116,9 @@ Clear saved settings and chosen apps: `defaults delete com.aayanrahman.windowfes
 ## Roadmap
 
 - Unboxing: open a crate from the menu to unlock new light sets, with a reveal animation
-- Sounds for unboxing and for switching the lights on
 - App icon and a downloadable release build
+
+## License
+
+The code is MIT licensed; see [LICENSE](LICENSE). The sound effects in `WindowFestivizer/Sounds` are
+from Team Fortress 2 and belong to Valve; they aren't covered by that license.

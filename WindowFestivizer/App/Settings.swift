@@ -81,6 +81,8 @@ final class Settings {
     var style: WrapStyle { didSet { save(style.rawValue, "style") } }
     /// Whether the end of the cable hangs off the window's right corner and swings.
     var tail: Bool { didSet { save(tail, "tail") } }
+    /// Whether the TF2 sound effects play (see Sounds.swift).
+    var sounds: Bool { didSet { save(sounds, "sounds") } }
     var pattern: LightPattern { didSet { save(pattern.rawValue, "pattern") } }
     var showOn: ShowOn { didSet { save(showOn.rawValue, "showOn") } }
     /// Apps picked with Choose Windows, by name (like "Safari"). With Show On set to Windows I
@@ -89,10 +91,11 @@ final class Settings {
 
     private init() {
         enabled = defaults.object(forKey: "enabled") as? Bool ?? true
-        themeID = defaults.string(forKey: "theme") ?? Theme.festivizer.id
+        themeID = defaults.string(forKey: "theme") ?? Theme.blu.id
         size = defaults.string(forKey: "size").flatMap(WrapSize.init(rawValue:)) ?? .regular
         style = defaults.string(forKey: "style").flatMap(WrapStyle.init(rawValue:)) ?? .wrapped
         tail = defaults.object(forKey: "tail") as? Bool ?? true
+        sounds = defaults.object(forKey: "sounds") as? Bool ?? true
         pattern = defaults.string(forKey: "pattern").flatMap(LightPattern.init(rawValue:)) ?? .festivizer
         showOn = defaults.string(forKey: "showOn").flatMap(ShowOn.init(rawValue:)) ?? .allWindows
         chosenApps = Set(defaults.stringArray(forKey: "chosenApps") ?? [])
@@ -108,7 +111,8 @@ final class Settings {
         if themeID == Theme.mixedID {
             return Theme.all[Int(Settings.stableHash(app) % UInt32(Theme.all.count))]
         }
-        return Theme.all.first { $0.id == themeID } ?? .festivizer
+        // A theme saved by an older version that no longer exists falls back to BLU.
+        return Theme.all.first { $0.id == themeID } ?? .blu
     }
 
     /// FNV-1a hash. Swift's own `hashValue` changes every launch, and an app should keep its colours.

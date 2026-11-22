@@ -4,9 +4,9 @@ import Foundation
 /// Draws the cable and the bulbs with Core Graphics.
 ///
 /// There are no picture files in this app. Just as Window Scarves knits its scarves in code, the
-/// lights are drawn from a few curves and gradients. The style follows TF2's painted look: slim
-/// pointed bulbs that are hottest near the socket and richest in colour at the tip, a thin dark
-/// outline, flat dark-green sockets, and no blurry halos.
+/// lights are drawn from a few curves and gradients. The style follows TF2's painted look:
+/// straight-sided capsule bulbs with a pointed tip and a pale facet down one side, hottest near the
+/// socket, nearly black when off, with a thin dark outline, black sockets, and no blurry halos.
 ///
 /// Crispness: every bulb is drawn as vector shapes at its final position and angle, straight onto
 /// a bitmap whose edges sit on whole pixels. Nothing is drawn once and then rotated or scaled
@@ -23,8 +23,8 @@ enum BulbArt {
     /// 0 turns it off.
     static let glowStrength: CGFloat = 0.22
 
-    /// What off bulbs fade towards: a dark slate, so they still read as coloured glass.
-    private static let offGlass = RGB(0x2B3036)
+    /// What off bulbs fade towards: nearly black, as in TF2, with just a hint of their colour left.
+    private static let offGlass = RGB(0x15181A)
 
     // MARK: Pictures
 
@@ -43,6 +43,8 @@ enum BulbArt {
                 drawCable(ctx, g.backRuns, twist: g.twist, colour: theme.wire.darker(0.3))
             } else {
                 drawCable(ctx, g.frontRuns, twist: g.twist, colour: theme.wire, fades: g.fades)
+                // On top of the cable's end, so the cable looks like it comes out of it.
+                drawBattery(ctx, g.battery)
             }
             for bulb in g.bulbs where bulb.behind == behind {
                 drawBulb(ctx, bulb, colour: theme.colours[bulb.group], socket: theme.wire, lit: false)
@@ -106,73 +108,155 @@ enum BulbArt {
         let L = bulb.length
         let W = L * widthRatio
         let socketLength = L * 0.3
-        let socketWidth = W * 0.8
-        let glassTop = socketLength * 0.82   // tucked up inside the socket
-        let gl = L - glassTop                // length of the glass
+        let socketWidth = W * 0.86
+        let glassTop = socketLength * 0.85   // tucked up inside the socket
+        let shoulder = L * 0.7               // where the straight sides end and the point begins
 
         ctx.saveGState()
         ctx.translateBy(x: bulb.attach.x, y: bulb.attach.y)
         // From here on the bulb points straight down the +y axis, socket at the origin.
         ctx.rotate(by: bulb.angle - .pi / 2)
 
-        // The glass: a slim teardrop, widest a third of the way down, tapering to a soft point.
+        // The glass: a capsule with straight sides, narrowing slightly at the socket, then a cone
+        // to a point that's just barely rounded.
         let glass = CGMutablePath()
-        glass.move(to: CGPoint(x: -socketWidth * 0.42, y: glassTop))
-        glass.addCurve(to: CGPoint(x: -W / 2, y: glassTop + gl * 0.32),
-                       control1: CGPoint(x: -socketWidth * 0.5, y: glassTop + gl * 0.1),
-                       control2: CGPoint(x: -W / 2, y: glassTop + gl * 0.18))
-        glass.addCurve(to: CGPoint(x: 0, y: L),
-                       control1: CGPoint(x: -W / 2, y: glassTop + gl * 0.62),
-                       control2: CGPoint(x: -W * 0.12, y: L - gl * 0.02))
-        glass.addCurve(to: CGPoint(x: W / 2, y: glassTop + gl * 0.32),
-                       control1: CGPoint(x: W * 0.12, y: L - gl * 0.02),
-                       control2: CGPoint(x: W / 2, y: glassTop + gl * 0.62))
-        glass.addCurve(to: CGPoint(x: socketWidth * 0.42, y: glassTop),
-                       control1: CGPoint(x: W / 2, y: glassTop + gl * 0.18),
-                       control2: CGPoint(x: socketWidth * 0.5, y: glassTop + gl * 0.1))
+        glass.move(to: CGPoint(x: -socketWidth * 0.45, y: glassTop))
+        glass.addLine(to: CGPoint(x: -W / 2, y: glassTop + L * 0.08))
+        glass.addLine(to: CGPoint(x: -W / 2, y: shoulder))
+        glass.addLine(to: CGPoint(x: -W * 0.09, y: L - W * 0.1))
+        glass.addQuadCurve(to: CGPoint(x: W * 0.09, y: L - W * 0.1), control: CGPoint(x: 0, y: L + W * 0.04))
+        glass.addLine(to: CGPoint(x: W / 2, y: shoulder))
+        glass.addLine(to: CGPoint(x: W / 2, y: glassTop + L * 0.08))
+        glass.addLine(to: CGPoint(x: socketWidth * 0.45, y: glassTop))
         glass.closeSubpath()
 
-        // Fill. Lit: hottest by the filament near the socket, richest colour at the tip.
-        // Off: the same glass, darkened towards slate.
+        // Fill. Lit: hottest by the filament near the socket, then the full colour to the tip.
+        // Off: almost black, keeping just a hint of the colour.
         let stops: [RGB] = lit
-            ? [c.lighter(0.7), c.lighter(0.25), c, c.darker(0.12)]
-            : [c.mix(offGlass, 0.5), c.mix(offGlass, 0.6), c.mix(offGlass, 0.68), c.mix(offGlass, 0.74)]
+            ? [c.lighter(0.6), c.lighter(0.15), c, c.darker(0.08)]
+            : [c.mix(offGlass, 0.72), c.mix(offGlass, 0.78), c.mix(offGlass, 0.82), c.mix(offGlass, 0.85)]
         let fill = CGGradient(colorsSpace: sRGB, colors: stops.map { $0.cg() } as CFArray,
-                              locations: [0, 0.3, 0.75, 1])!
+                              locations: [0, 0.3, 0.7, 1])!
         ctx.saveGState()
         ctx.addPath(glass)
         ctx.clip()
         ctx.drawLinearGradient(fill, start: CGPoint(x: 0, y: glassTop), end: CGPoint(x: 0, y: L), options: [])
+        // Facets: a pale flat band down the left side and a shaded one down the right, which is
+        // what makes TF2's bulbs read as cut glass rather than smooth plastic.
+        ctx.setFillColor(RGB(0xFFFFFF).cg(lit ? 0.4 : 0.1))
+        ctx.fill(CGRect(x: -W * 0.3, y: glassTop, width: W * 0.2, height: L - glassTop))
+        ctx.setFillColor(RGB(0x000000).cg(lit ? 0.16 : 0.25))
+        ctx.fill(CGRect(x: W * 0.22, y: glassTop, width: W * 0.3, height: L - glassTop))
         if lit {
-            // A pale core down the middle, where the light is strongest.
-            ctx.setFillColor(RGB(0xFFFFFF).cg(0.45))
-            ctx.fillEllipse(in: CGRect(x: -W * 0.12, y: glassTop + gl * 0.04, width: W * 0.24, height: gl * 0.42))
+            // The hot core, near the socket.
+            ctx.setFillColor(RGB(0xFFFFFF).cg(0.5))
+            ctx.fillEllipse(in: CGRect(x: -W * 0.1, y: glassTop + L * 0.04, width: W * 0.2, height: L * 0.3))
         }
-        // A short glint down one side.
-        ctx.setFillColor(RGB(0xFFFFFF).cg(lit ? 0.75 : 0.22))
-        ctx.fillEllipse(in: CGRect(x: -W * 0.31, y: glassTop + gl * 0.16, width: W * 0.13, height: gl * 0.3))
         ctx.restoreGState()
 
         // The painted outline.
         ctx.addPath(glass)
-        ctx.setStrokeColor((lit ? c.darker(0.55) : c.mix(offGlass, 0.85).darker(0.3)).cg())
-        ctx.setLineWidth(max(0.6, L * 0.05))
+        ctx.setStrokeColor((lit ? c.darker(0.55) : RGB(0x000000)).cg(lit ? 1 : 0.6))
+        ctx.setLineWidth(max(0.6, L * 0.045))
+        ctx.setLineJoin(.round)
         ctx.strokePath()
 
-        // The socket: a small dark cylinder in the wire's colour, with a band and a sheen.
+        // The socket: a small black cylinder with a ring and a sheen.
+        let socketColour = wire.darker(0.25)
         let socketRect = CGRect(x: -socketWidth / 2, y: 0, width: socketWidth, height: socketLength)
-        let socket = CGPath(roundedRect: socketRect, cornerWidth: socketWidth * 0.3,
-                            cornerHeight: socketWidth * 0.3, transform: nil)
+        let socket = CGPath(roundedRect: socketRect, cornerWidth: socketWidth * 0.25,
+                            cornerHeight: socketWidth * 0.25, transform: nil)
         ctx.addPath(socket)
-        ctx.setFillColor(wire.lighter(0.06).cg())
+        ctx.setFillColor(socketColour.cg())
         ctx.fillPath()
-        ctx.setFillColor(wire.darker(0.35).cg())
-        ctx.fill(CGRect(x: socketRect.minX, y: socketLength * 0.62, width: socketWidth, height: max(0.5, L * 0.04)))
-        ctx.setFillColor(wire.lighter(0.35).cg(0.6))
-        ctx.fill(CGRect(x: socketRect.minX + socketWidth * 0.18, y: socketLength * 0.12,
-                        width: max(0.5, socketWidth * 0.14), height: socketLength * 0.4))
+        ctx.setFillColor(socketColour.lighter(0.18).cg())
+        ctx.fill(CGRect(x: socketRect.minX, y: socketLength * 0.6, width: socketWidth, height: max(0.5, L * 0.035)))
+        ctx.setFillColor(RGB(0xFFFFFF).cg(0.28))
+        ctx.fill(CGRect(x: socketRect.minX + socketWidth * 0.2, y: socketLength * 0.1,
+                        width: max(0.5, socketWidth * 0.14), height: socketLength * 0.42))
         ctx.addPath(socket)
-        ctx.setStrokeColor(wire.darker(0.45).cg())
+        ctx.setStrokeColor(RGB(0x000000).cg(0.7))
+        ctx.setLineWidth(0.5)
+        ctx.strokePath()
+
+        ctx.restoreGState()
+    }
+
+    // MARK: Battery pack
+
+    /// The battery pack: two batteries side by side in a dark plastic holder, with a strip of grey
+    /// tape round them, the way the Festivizer tapes them onto a weapon.
+    static func drawBattery(_ ctx: CGContext, _ battery: WrapGeometry.Battery) {
+        let w = battery.size.width, h = battery.size.height
+        guard w > 0, h > 0 else { return }
+        ctx.saveGState()
+        ctx.translateBy(x: battery.centre.x, y: battery.centre.y)
+        // From here on the long side runs along +x, and the cable leaves from the +x end.
+        ctx.rotate(by: battery.angle)
+
+        // The holder.
+        let holder = CGPath(roundedRect: CGRect(x: -w / 2, y: -h / 2, width: w, height: h),
+                            cornerWidth: h * 0.22, cornerHeight: h * 0.22, transform: nil)
+        ctx.addPath(holder)
+        ctx.setFillColor(RGB(0x2A2E2B).cg())
+        ctx.fillPath()
+
+        // Two batteries lying along it, each shaded like a cylinder, with a red band at the
+        // positive end and a little metal nub.
+        let inset = h * 0.12
+        let cellHeight = (h - 3 * inset) / 2
+        let nub = h * 0.08
+        for i in 0..<2 {
+            let cell = CGRect(x: -w / 2 + inset, y: -h / 2 + inset + CGFloat(i) * (cellHeight + inset),
+                              width: w - 2 * inset - nub, height: cellHeight)
+            let shape = CGPath(roundedRect: cell, cornerWidth: cellHeight * 0.3, cornerHeight: cellHeight * 0.3, transform: nil)
+            ctx.saveGState()
+            ctx.addPath(shape)
+            ctx.clip()
+            let body = CGGradient(colorsSpace: sRGB, colors: [RGB(0xFFFDF6).cg(), RGB(0xE9E3D3).cg(), RGB(0xB3AB98).cg()] as CFArray,
+                                  locations: [0, 0.45, 1])!
+            ctx.drawLinearGradient(body, start: CGPoint(x: 0, y: cell.minY), end: CGPoint(x: 0, y: cell.maxY), options: [])
+            let band = CGGradient(colorsSpace: sRGB, colors: [RGB(0xEC6450).cg(), RGB(0xC2362A).cg(), RGB(0x86211A).cg()] as CFArray,
+                                  locations: [0, 0.45, 1])!
+            ctx.clip(to: CGRect(x: cell.maxX - cell.width * 0.3, y: cell.minY, width: cell.width * 0.3, height: cell.height))
+            ctx.drawLinearGradient(band, start: CGPoint(x: 0, y: cell.minY), end: CGPoint(x: 0, y: cell.maxY), options: [])
+            ctx.restoreGState()
+            ctx.setFillColor(RGB(0xB9BDC2).cg())
+            ctx.fill(CGRect(x: cell.maxX, y: cell.midY - cellHeight * 0.22, width: nub, height: cellHeight * 0.44))
+            ctx.addPath(shape)
+            ctx.setStrokeColor(RGB(0x000000).cg(0.45))
+            ctx.setLineWidth(0.5)
+            ctx.strokePath()
+        }
+
+        ctx.addPath(holder)
+        ctx.setStrokeColor(RGB(0x0E100E).cg())
+        ctx.setLineWidth(0.8)
+        ctx.strokePath()
+
+        // A strip of tape round the middle, a little crooked, with torn ends.
+        ctx.rotate(by: 0.08)
+        let tapeWidth = w * 0.2, overhang = h * 0.1
+        let tape = CGMutablePath()
+        let teeth = 4
+        tape.move(to: CGPoint(x: -w * 0.12, y: -h / 2 - overhang))
+        for t in 1...teeth {
+            let x = -w * 0.12 + tapeWidth * CGFloat(t) / CGFloat(teeth)
+            tape.addLine(to: CGPoint(x: x - tapeWidth / CGFloat(2 * teeth), y: -h / 2 - overhang + (t % 2 == 0 ? 0 : h * 0.06)))
+            tape.addLine(to: CGPoint(x: x, y: -h / 2 - overhang))
+        }
+        tape.addLine(to: CGPoint(x: -w * 0.12 + tapeWidth, y: h / 2 + overhang))
+        for t in (0..<teeth).reversed() {
+            let x = -w * 0.12 + tapeWidth * CGFloat(t) / CGFloat(teeth)
+            tape.addLine(to: CGPoint(x: x + tapeWidth / CGFloat(2 * teeth), y: h / 2 + overhang - (t % 2 == 0 ? h * 0.06 : 0)))
+            tape.addLine(to: CGPoint(x: x, y: h / 2 + overhang))
+        }
+        tape.closeSubpath()
+        ctx.addPath(tape)
+        ctx.setFillColor(RGB(0xC9C4B8).cg(0.94))
+        ctx.fillPath()
+        ctx.addPath(tape)
+        ctx.setStrokeColor(RGB(0x6F6A60).cg(0.7))
         ctx.setLineWidth(0.5)
         ctx.strokePath()
 
