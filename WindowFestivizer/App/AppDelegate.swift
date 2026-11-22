@@ -28,8 +28,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Any change in the menu is applied to every window straight away.
         settings.onChange = { [weak self] in self?.tracker.settingsChanged() }
         tracker.start()
-        SoundPlayer.shared.preload()
-        if settings.enabled { SoundPlayer.shared.play(.crate) }
+        SoundPlayer.shared.start()
+        if settings.enabled { SoundPlayer.shared.play(.lightsOn) }
     }
 
     func applicationWillTerminate(_ notification: Notification) {
@@ -66,6 +66,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
                                                 action: #selector(pickPattern(_:)))))
         menu.addItem(item("Swinging Tail", #selector(toggleTail), checked: settings.tail))
         menu.addItem(item("Sounds", #selector(toggleSounds), checked: settings.sounds))
+        let soundsFolder = item("Open Sounds Folder…", #selector(openSoundsFolder), checked: false)
+        let added = SoundPlayer.shared.available.map(\.rawValue)
+        soundsFolder.toolTip = added.isEmpty ? "No sounds added yet" : "Added: " + added.joined(separator: ", ")
+        menu.addItem(soundsFolder)
         menu.addItem(.separator())
         menu.addItem(item("Quit Window Festivizer", #selector(quit), checked: false, key: "q"))
     }
@@ -111,7 +115,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func toggleEnabled() {
         settings.enabled.toggle()
-        if settings.enabled { SoundPlayer.shared.play(.crate) }
+        if settings.enabled { SoundPlayer.shared.play(.lightsOn) }
     }
 
     @objc private func toggleTail() { settings.tail.toggle() }
@@ -119,8 +123,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     @objc private func toggleSounds() {
         settings.sounds.toggle()
         // A quick sample when they come back on, so you know they work.
-        SoundPlayer.shared.play(.chime)
+        SoundPlayer.shared.play(.newWindow)
     }
+
+    @objc private func openSoundsFolder() { SoundPlayer.shared.openFolder() }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func chooseWindows() { picker.open() }
     @objc private func forgetChoices() { tracker.forgetChoices() }

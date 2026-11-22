@@ -55,7 +55,7 @@ final class WindowPicker {
         guard let target = tracker.window(at: Self.global(NSEvent.mouseLocation)) else { return }
         tracker.toggle(target, justThisWindow: justThisWindow)
         // The chime when a window gets its lights; taking them off is silent.
-        if !target.isChosen { SoundPlayer.shared.play(.chime) }
+        if !target.isChosen { SoundPlayer.shared.play(.newWindow) }
         pointerMoved()
     }
 

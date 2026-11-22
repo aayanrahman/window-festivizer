@@ -297,13 +297,13 @@ final class WindowTracker: NSObject {
             // A ding for every swing of a shake, but not faster than they can be told apart.
             if shaken && now - lastHit > 0.08 {
                 lastHit = now
-                SoundPlayer.shared.play(.hit)
+                SoundPlayer.shared.play(.shake)
             }
             keepAbove(overlay, t, stackIndex: stackIndex, ownerAt: ownerAt, now: now)
         }
         if brandNew && now > chimeQuietUntil && now - lastChime > 1.5 {
             lastChime = now
-            SoundPlayer.shared.play(.chime)
+            SoundPlayer.shared.play(.newWindow)
         }
     }
 
