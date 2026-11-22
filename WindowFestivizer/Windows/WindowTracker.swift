@@ -4,13 +4,17 @@ import AppKit
 ///
 /// Like Window Scarves, it only uses public APIs that need no permissions: CGWindowListCopyWindowInfo
 /// says where every window is and how they're stacked. It looks about 7 times a second while nothing
-/// is happening, and 60 times a second while something is moving or a tail is still swinging.
+/// is happening, and once per screen refresh while something is moving or a tail is still swinging.
 final class WindowTracker: NSObject {
     private let settings = Settings.shared
     private let myPID = getpid()
     private var overlays: [CGWindowID: LightsOverlay] = [:]
 
+    /// Ticks while idle.
     private var timer: Timer?
+    /// Ticks while something's moving: once per screen refresh, just after the screen updates (see
+    /// `setSpeed`).
+    private var displayLink: CADisplayLink?
     private var beatTimer: Timer?
     private var isFast = false
     /// Keep looking quickly until this time.
@@ -45,7 +49,6 @@ final class WindowTracker: NSObject {
     private var lastChime: CFTimeInterval = 0
     private var lastHit: CFTimeInterval = 0
 
-    private static let fastInterval = 1.0 / 60
     /// Asking macOS for the window list is most of this app's idle cost, so while nothing is
     /// happening it only looks about 7 times a second. Mouse presses and drags switch to the fast
     /// rate at once; only keyboard-driven moves (window-manager shortcuts) can lag, by under 0.15 s.
@@ -107,6 +110,7 @@ final class WindowTracker: NSObject {
 
     func stop() {
         timer?.invalidate()
+        displayLink?.invalidate()
         beatTimer?.invalidate()
         if let mouseMonitor { NSEvent.removeMonitor(mouseMonitor) }
         removeAll()
@@ -148,13 +152,25 @@ final class WindowTracker: NSObject {
         FileHandle.standardError.write(Data(String(format: "%8.2f  %@\n", CACurrentMediaTime(), message()).utf8))
     }
 
+    /// Fast: a display link, which calls `tick` once per screen refresh, right after the screen
+    /// updates. Each look at the windows then lands at the same point in every frame, so the
+    /// lights stay the same distance behind a moving window instead of jittering between one and
+    /// two frames behind, as they did with a plain 60 Hz timer drifting against the display.
+    /// Idle: a slow timer that macOS can line up with other work to save power.
     private func setSpeed(fast: Bool) {
-        log(fast ? "fast (60/s)" : "idle (~7/s)")
+        log(fast ? "fast (every screen refresh)" : "idle (~7/s)")
         isFast = fast
         timer?.invalidate()
-        let t = Timer(timeInterval: fast ? Self.fastInterval : Self.idleInterval, target: self,
+        timer = nil
+        displayLink?.invalidate()
+        displayLink = nil
+        if fast, let link = (NSScreen.main ?? NSScreen.screens.first)?.displayLink(target: self, selector: #selector(tick)) {
+            link.add(to: .main, forMode: .common)
+            displayLink = link
+            return
+        }
+        let t = Timer(timeInterval: fast ? 1.0 / 120 : Self.idleInterval, target: self,
                       selector: #selector(tick), userInfo: nil, repeats: true)
-        // While idle, let macOS line this timer up with other work to save power.
         t.tolerance = fast ? 0 : 0.02
         RunLoop.main.add(t, forMode: .common)
         timer = t

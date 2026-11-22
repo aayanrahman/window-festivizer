@@ -1,20 +1,15 @@
 import AVFoundation
 
-/// The sound effects, all from Team Fortress 2 or TF2 sound mods. The files live in the Sounds
-/// folder, and Xcode copies them into the app. They aren't covered by this project's licence.
+/// The sound effects: TF2's crate opening, and two Christmas sounds from TF2 sound mods. The files
+/// live in the Sounds folder, and Xcode copies them into the app. They aren't covered by this
+/// project's licence.
 enum Sound: String, CaseIterable {
     /// Lights switching on, including at launch.
     case crate = "Item_open_crate"
-    /// A brand-new window getting its lights.
+    /// A window getting lights: a brand-new one, or one chosen in Choose Windows.
     case chime = "Christmas_notification"
     /// A window shaken: each time it's flung back the other way.
     case hit = "Christmas_hitsound"
-    /// A window chosen in Choose Windows.
-    case achievement = "Achievement_earned"
-    /// A window's lights taken off in Choose Windows.
-    case stomp = "Mantreads"
-    /// A change of style, lights, size, pattern or tail in the menu.
-    case donk = "Doubledonk"
 
     /// How many copies can play at once. Shaking a window fires hits faster than one finishes,
     /// so they overlap rather than cut each other off; everything else restarts.
@@ -30,6 +25,12 @@ final class SoundPlayer {
 
     private var players: [Sound: [AVAudioPlayer]] = [:]
     private var nextVoice: [Sound: Int] = [:]
+
+    /// Load every sound now, at launch, so the first one to play doesn't stall a frame while it
+    /// loads (the first ding of a shake, say).
+    func preload() {
+        for sound in Sound.allCases { _ = players(for: sound) }
+    }
 
     func play(_ sound: Sound) {
         guard Settings.shared.sounds else { return }

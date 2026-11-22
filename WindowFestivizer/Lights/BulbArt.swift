@@ -43,8 +43,6 @@ enum BulbArt {
                 drawCable(ctx, g.backRuns, twist: g.twist, colour: theme.wire.darker(0.3))
             } else {
                 drawCable(ctx, g.frontRuns, twist: g.twist, colour: theme.wire, fades: g.fades)
-                // On top of the cable's end, so the cable looks like it comes out of it.
-                drawBattery(ctx, g.battery)
             }
             for bulb in g.bulbs where bulb.behind == behind {
                 drawBulb(ctx, bulb, colour: theme.colours[bulb.group], socket: theme.wire, lit: false)
@@ -176,87 +174,6 @@ enum BulbArt {
                         width: max(0.5, socketWidth * 0.14), height: socketLength * 0.42))
         ctx.addPath(socket)
         ctx.setStrokeColor(RGB(0x000000).cg(0.7))
-        ctx.setLineWidth(0.5)
-        ctx.strokePath()
-
-        ctx.restoreGState()
-    }
-
-    // MARK: Battery pack
-
-    /// The battery pack: two batteries side by side in a dark plastic holder, with a strip of grey
-    /// tape round them, the way the Festivizer tapes them onto a weapon.
-    static func drawBattery(_ ctx: CGContext, _ battery: WrapGeometry.Battery) {
-        let w = battery.size.width, h = battery.size.height
-        guard w > 0, h > 0 else { return }
-        ctx.saveGState()
-        ctx.translateBy(x: battery.centre.x, y: battery.centre.y)
-        // From here on the long side runs along +x, and the cable leaves from the +x end.
-        ctx.rotate(by: battery.angle)
-
-        // The holder.
-        let holder = CGPath(roundedRect: CGRect(x: -w / 2, y: -h / 2, width: w, height: h),
-                            cornerWidth: h * 0.22, cornerHeight: h * 0.22, transform: nil)
-        ctx.addPath(holder)
-        ctx.setFillColor(RGB(0x2A2E2B).cg())
-        ctx.fillPath()
-
-        // Two batteries lying along it, each shaded like a cylinder, with a red band at the
-        // positive end and a little metal nub.
-        let inset = h * 0.12
-        let cellHeight = (h - 3 * inset) / 2
-        let nub = h * 0.08
-        for i in 0..<2 {
-            let cell = CGRect(x: -w / 2 + inset, y: -h / 2 + inset + CGFloat(i) * (cellHeight + inset),
-                              width: w - 2 * inset - nub, height: cellHeight)
-            let shape = CGPath(roundedRect: cell, cornerWidth: cellHeight * 0.3, cornerHeight: cellHeight * 0.3, transform: nil)
-            ctx.saveGState()
-            ctx.addPath(shape)
-            ctx.clip()
-            let body = CGGradient(colorsSpace: sRGB, colors: [RGB(0xFFFDF6).cg(), RGB(0xE9E3D3).cg(), RGB(0xB3AB98).cg()] as CFArray,
-                                  locations: [0, 0.45, 1])!
-            ctx.drawLinearGradient(body, start: CGPoint(x: 0, y: cell.minY), end: CGPoint(x: 0, y: cell.maxY), options: [])
-            let band = CGGradient(colorsSpace: sRGB, colors: [RGB(0xEC6450).cg(), RGB(0xC2362A).cg(), RGB(0x86211A).cg()] as CFArray,
-                                  locations: [0, 0.45, 1])!
-            ctx.clip(to: CGRect(x: cell.maxX - cell.width * 0.3, y: cell.minY, width: cell.width * 0.3, height: cell.height))
-            ctx.drawLinearGradient(band, start: CGPoint(x: 0, y: cell.minY), end: CGPoint(x: 0, y: cell.maxY), options: [])
-            ctx.restoreGState()
-            ctx.setFillColor(RGB(0xB9BDC2).cg())
-            ctx.fill(CGRect(x: cell.maxX, y: cell.midY - cellHeight * 0.22, width: nub, height: cellHeight * 0.44))
-            ctx.addPath(shape)
-            ctx.setStrokeColor(RGB(0x000000).cg(0.45))
-            ctx.setLineWidth(0.5)
-            ctx.strokePath()
-        }
-
-        ctx.addPath(holder)
-        ctx.setStrokeColor(RGB(0x0E100E).cg())
-        ctx.setLineWidth(0.8)
-        ctx.strokePath()
-
-        // A strip of tape round the middle, a little crooked, with torn ends.
-        ctx.rotate(by: 0.08)
-        let tapeWidth = w * 0.2, overhang = h * 0.1
-        let tape = CGMutablePath()
-        let teeth = 4
-        tape.move(to: CGPoint(x: -w * 0.12, y: -h / 2 - overhang))
-        for t in 1...teeth {
-            let x = -w * 0.12 + tapeWidth * CGFloat(t) / CGFloat(teeth)
-            tape.addLine(to: CGPoint(x: x - tapeWidth / CGFloat(2 * teeth), y: -h / 2 - overhang + (t % 2 == 0 ? 0 : h * 0.06)))
-            tape.addLine(to: CGPoint(x: x, y: -h / 2 - overhang))
-        }
-        tape.addLine(to: CGPoint(x: -w * 0.12 + tapeWidth, y: h / 2 + overhang))
-        for t in (0..<teeth).reversed() {
-            let x = -w * 0.12 + tapeWidth * CGFloat(t) / CGFloat(teeth)
-            tape.addLine(to: CGPoint(x: x + tapeWidth / CGFloat(2 * teeth), y: h / 2 + overhang - (t % 2 == 0 ? h * 0.06 : 0)))
-            tape.addLine(to: CGPoint(x: x, y: h / 2 + overhang))
-        }
-        tape.closeSubpath()
-        ctx.addPath(tape)
-        ctx.setFillColor(RGB(0xC9C4B8).cg(0.94))
-        ctx.fillPath()
-        ctx.addPath(tape)
-        ctx.setStrokeColor(RGB(0x6F6A60).cg(0.7))
         ctx.setLineWidth(0.5)
         ctx.strokePath()
 

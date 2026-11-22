@@ -1,10 +1,10 @@
 # Window Festivizer
 
 A macOS menu-bar app that wraps the top of your windows in a string of festive lights, the way
-TF2's Festivizer wraps a gun: a messy coil of twisted cable running from a taped-on battery pack,
-capsule bulbs sticking out at every angle, and a loose end swinging off the corner. The lights blink
-like the Festivizer's too: three colours, two lit at a time, with the dark one moving along every
-beat. And it plays TF2 sound effects.
+TF2's Festivizer wraps a gun: a messy coil of twisted cable, capsule bulbs sticking out at every
+angle, and a loose end swinging off the corner. The lights blink like the Festivizer's too: three
+colours, two lit at a time, with the dark one moving along every beat. And it plays a few festive
+sound effects.
 
 ![The lights on pretend windows, in each style, theme and size](docs/preview.png)
 
@@ -43,20 +43,19 @@ team under the target's **Signing & Capabilities** tab.
 - **Pattern**: Festivizer (two of three colours lit) or Steady
 - **Swinging Tail**: the end of the cable hangs off the window's top-right corner and swings when
   you drag the window
-- **Sounds**: the TF2 sound effects below
+- **Sounds**: the sound effects below
 
 ## Sounds
 
 | When | Sound |
 | --- | --- |
 | The lights switch on, including at launch | Item open crate |
-| A brand-new window gets its lights | Christmas notification |
+| A window gets its lights: a brand-new one, or one you choose in Choose Windows | Christmas notification |
 | You shake a window while dragging it (every swing) | Christmas hitsound |
-| You choose a window in Choose Windows | Achievement earned |
-| You take a window's lights off | Mantreads |
-| You change Style, Lights, Size, Pattern or the tail | Doubledonk |
 
-The files are in `WindowFestivizer/Sounds`. The TF2 ones come from the
+Taking a window's lights off and changing settings in the menu are silent.
+
+The files are in `WindowFestivizer/Sounds`. The crate opening comes from the
 [Team Fortress Wiki](https://wiki.teamfortress.com/wiki/Category:Audio_cues); the two Christmas ones
 come from TF2 sound mods (a notification sound and a hitsound). To use different ones, replace a
 file keeping its name, or change the names in `App/Sounds.swift`.
@@ -77,13 +76,13 @@ yellow and green buttons, and clicks always pass straight through the lights.
 | `App/AppDelegate.swift` | The menu-bar icon and its menu. |
 | `App/Settings.swift` | Menu choices and chosen apps, saved in UserDefaults. Sizes and styles are defined here. |
 | `App/Sounds.swift` | The sounds and the player. The files are in `Sounds/`. |
-| `Windows/WindowTracker.swift` | Reads the window list about 7 times a second (60 while something moves or a tail swings), decides which windows get lights, keeps the lights stacked above them, and ticks the blink beat. |
+| `Windows/WindowTracker.swift` | Reads the window list about 7 times a second, and once per screen refresh (on a display link) while something moves or a tail swings; decides which windows get lights, keeps the lights stacked above them, and ticks the blink beat. |
 | `Windows/WindowPicker.swift` | Choose Windows: the dimmed sheet, the spotlight and label, and the banner. |
 | `Windows/ShakeDetector.swift` | Notices a window being shaken while it's dragged, for the hitsound. |
 | `Windows/LightsOverlay.swift` | One window's lights: an overlay for the strip along its top and one for its tail. |
 | `Windows/OverlayWindow.swift` | The see-through, click-through window the lights are drawn in. |
 | `Lights/WrapGeometry.swift` | Where everything goes, for both styles. Wrapped Around treats the top of the title bar as a pole and winds a wandering helix round it; the back of each turn shows just above the window's edge. |
-| `Lights/BulbArt.swift` | Draws the twisted cable, the capsule bulbs and the battery pack with Core Graphics, in TF2's painted style. There are no image files. |
+| `Lights/BulbArt.swift` | Draws the twisted cable and the capsule bulbs with Core Graphics, in TF2's painted style. There are no image files. |
 | `Lights/LightLayers.swift` | Turns the drawings into Core Animation layers, grouped by colour so a blink is a few opacity changes. |
 | `Lights/SwingingTail.swift` | Verlet rope physics for the tail, with a little stiffness so it curls rather than dangles. |
 | `Lights/FestivizerPattern.swift` | The blink rule: on beat *n*, colour *n mod 3* is dark. |

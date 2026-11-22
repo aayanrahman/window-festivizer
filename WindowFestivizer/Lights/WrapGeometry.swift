@@ -15,10 +15,8 @@ import Foundation
 /// the top-left corner, along the top edge and round the top-right corner. Bulbs mostly point
 /// outward; along the top edge some hang down over the title bar.
 ///
-/// Either way the cable starts at a battery pack, as it always does on a festivized weapon: strapped
-/// on top of the window just right of its buttons (Wrapped Around), or hanging on its left side
-/// (Laid on Top). With a tail, the last of the cable leaves the window near its top-right corner and
-/// hangs free (see SwingingTail).
+/// With a tail, the last of the cable leaves the window near its top-right corner and hangs free
+/// (see SwingingTail).
 ///
 /// All the unevenness comes from fixed sine waves and from hashes of each bulb's number, so a
 /// window always looks the same. Everything here is window-local: origin at the window's top-left
@@ -61,33 +59,6 @@ struct WrapGeometry {
         var period: CGFloat
     }
 
-    /// The battery pack: two batteries in a holder, taped up, with the cable coming out of one end.
-    struct Battery {
-        /// Its middle.
-        var centre: CGPoint
-        /// Which way its long side runs, in radians (y down). The cable leaves from the end this points to.
-        var angle: CGFloat
-        /// Length along `angle`, and thickness across it.
-        var size: CGSize
-
-        /// Where the cable comes out.
-        var outlet: CGPoint {
-            CGPoint(x: centre.x + cos(angle) * size.width / 2, y: centre.y + sin(angle) * size.width / 2)
-        }
-
-        /// The rectangle it covers, whichever way it's turned.
-        var bounds: CGRect {
-            let along = CGVector(dx: cos(angle) * size.width / 2, dy: sin(angle) * size.width / 2)
-            let across = CGVector(dx: -sin(angle) * size.height / 2, dy: cos(angle) * size.height / 2)
-            let corners = [(1, 1), (1, -1), (-1, 1), (-1, -1)].map { a, b in
-                CGPoint(x: centre.x + CGFloat(a) * along.dx + CGFloat(b) * across.dx,
-                        y: centre.y + CGFloat(a) * along.dy + CGFloat(b) * across.dy)
-            }
-            let xs = corners.map(\.x), ys = corners.map(\.y)
-            return CGRect(x: xs.min()!, y: ys.min()!, width: xs.max()! - xs.min()!, height: ys.max()! - ys.min()!)
-        }
-    }
-
     /// The free end of the cable.
     struct Tail {
         /// Where it hangs from.
@@ -115,7 +86,6 @@ struct WrapGeometry {
     /// Where the front cable fades away as it goes round the back.
     let fades: [Fade]
     let bulbs: [Bulb]
-    let battery: Battery
     let tail: Tail?
     /// What the strip overlay covers: all the cable and every bulb, with a little room for shadows.
     let stripRect: CGRect
@@ -137,7 +107,6 @@ struct WrapGeometry {
         frontRuns = parts.front
         fades = parts.fades
         bulbs = parts.bulbs
-        battery = parts.battery
         tail = parts.tail
 
         // Cover the cable (both strands at full swing) and every bulb, plus room for shadows.
@@ -151,7 +120,6 @@ struct WrapGeometry {
             if bulb.behind { box.size.height = max(0, min(box.maxY, 2) - box.minY) }
             if box.height > 0 { rect = rect.union(box) }
         }
-        rect = rect.union(battery.bounds.insetBy(dx: -2, dy: -2))
         stripRect = rect.integral
     }
 
@@ -160,12 +128,8 @@ struct WrapGeometry {
         var front: [[CablePoint]] = []
         var fades: [Fade] = []
         var bulbs: [Bulb] = []
-        var battery = Battery(centre: .zero, angle: 0, size: .zero)
         var tail: Tail?
     }
-
-    /// Battery pack size for scale `k`.
-    private static func batterySize(_ k: CGFloat) -> CGSize { CGSize(width: 20 * k, height: 12 * k) }
 
     // MARK: Wrapped Around
 
@@ -173,12 +137,7 @@ struct WrapGeometry {
         var parts = Parts()
         let R = 7.5 * k               // the pole's radius, before it wanders
         let axis = 0.6 * R            // so the pole's top pokes a little above the window's edge
-        // The battery pack sits on the window's top edge just right of the buttons, a little
-        // sunk into it as if strapped on. The coil starts where its cable comes out.
-        let pack = batterySize(k)
-        parts.battery = Battery(centre: CGPoint(x: buttonsWidth + pack.width / 2, y: 2 - pack.height / 2),
-                                angle: 0, size: pack)
-        let start = buttonsWidth + pack.width + 3
+        let start = buttonsWidth
         let end = size.width - (wantsTail ? 0.3 : 0.6) * R
         let basePitch = 3 * R         // distance along the window per turn, before it wanders
         let stepsPerTurn = 72
@@ -206,18 +165,6 @@ struct WrapGeometry {
             step += 1
         }
 
-        // A short lead from the battery's outlet to where the coil begins.
-        let outlet = parts.battery.outlet
-        let leadLength = hypot(points[0].x - outlet.x, points[0].y - outlet.y)
-        let leadSteps = max(1, Int(leadLength.rounded(.up)))
-        let lead = (0..<leadSteps).map { i -> CGPoint in
-            let t = CGFloat(i) / CGFloat(leadSteps)
-            return CGPoint(x: outlet.x + (points[0].x - outlet.x) * t, y: outlet.y + (points[0].y - outlet.y) * t)
-        }
-        points.insert(contentsOf: lead, at: 0)
-        front.insert(contentsOf: Array(repeating: true, count: lead.count), at: 0)
-        phases.insert(contentsOf: Array(repeating: 0, count: lead.count), at: 0)
-
         // Split into front and back runs. Neighbouring runs share their end point so they join up.
         let cable = Self.cable(points)
         var run: [CablePoint] = []
@@ -233,17 +180,23 @@ struct WrapGeometry {
         }
 
         // Each front run ends at the bottom of the pole, going under and out of sight: fade it.
+        // The very first one also fades in, since nothing comes before it.
         let fadeLength = 6 * k
-        for run in parts.front {
-            guard let last = run.last, let inner = run.last(where: { $0.s <= last.s - fadeLength }) else { continue }
-            parts.fades.append(Fade(from: last.p, to: inner.p))
+        for (i, run) in parts.front.enumerated() {
+            guard let first = run.first, let last = run.last else { continue }
+            if let inner = run.last(where: { $0.s <= last.s - fadeLength }) {
+                parts.fades.append(Fade(from: last.p, to: inner.p))
+            }
+            if i == 0, let inner = run.first(where: { $0.s >= first.s + fadeLength }) {
+                parts.fades.append(Fade(from: first.p, to: inner.p))
+            }
         }
 
         // Bulbs every half turn or so, give or take. Those on the front point up from the top of
         // the pole and down from the bottom, either way from the middle; those on the back are
         // only kept near the top, where they peek over the window's edge. All splay widely.
         let baseLength = (12 * k).rounded()
-        var i = lead.count + 10
+        var i = 10
         var attempt = 0
         while i < cable.count - 10 {
             let n = (side: noise(attempt, 1), angle: noise(attempt, 2), length: noise(attempt, 3), gap: noise(attempt, 4))
@@ -279,11 +232,6 @@ struct WrapGeometry {
         let fadeLength = 12 * k
         let arcSteps = max(4, Int((r * .pi / 2).rounded(.up)))
 
-        // The battery pack hangs on the window's left side, straddling the edge, standing upright
-        // with its outlet at the top, where the cable comes out and runs up the side.
-        let pack = batterySize(k)
-        parts.battery = Battery(centre: CGPoint(x: 0, y: r + drop + pack.width / 2), angle: -.pi / 2, size: pack)
-
         var points: [CGPoint] = []
         var outward: [CGVector] = []
         func add(_ p: CGPoint, _ n: CGVector) {
@@ -310,7 +258,10 @@ struct WrapGeometry {
         let cable = Self.cable(points, normals: outward)
         parts.front = [cable]
 
-        // Without a tail, fade the end as if the cable carried on round the back.
+        // Fade the start, and the end if there's no tail, as if the cable carried on round the back.
+        if let first = cable.first, let inner = cable.first(where: { $0.s >= fadeLength }) {
+            parts.fades.append(Fade(from: first.p, to: inner.p))
+        }
         if !wantsTail, let last = cable.last, let inner = cable.last(where: { $0.s <= last.s - fadeLength }) {
             parts.fades.append(Fade(from: last.p, to: inner.p))
         }
@@ -319,7 +270,7 @@ struct WrapGeometry {
         // between pointing up and hanging down, with the odd repeat so the rhythm isn't perfect.
         let baseLength = (12 * k).rounded()
         let last = (cable.last?.s ?? 0) - (wantsTail ? baseLength : fadeLength + 2)
-        var s = 6 * k
+        var s = fadeLength + 2
         var index = 0
         var pointsOut = true
         var cursor = 0

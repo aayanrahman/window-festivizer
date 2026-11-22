@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         // Any change in the menu is applied to every window straight away.
         settings.onChange = { [weak self] in self?.tracker.settingsChanged() }
         tracker.start()
+        SoundPlayer.shared.preload()
         if settings.enabled { SoundPlayer.shared.play(.crate) }
     }
 
@@ -113,15 +114,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
         if settings.enabled { SoundPlayer.shared.play(.crate) }
     }
 
-    @objc private func toggleTail() {
-        settings.tail.toggle()
-        SoundPlayer.shared.play(.donk)
-    }
+    @objc private func toggleTail() { settings.tail.toggle() }
 
     @objc private func toggleSounds() {
         settings.sounds.toggle()
         // A quick sample when they come back on, so you know they work.
-        SoundPlayer.shared.play(.stomp)
+        SoundPlayer.shared.play(.chime)
     }
     @objc private func quit() { NSApp.terminate(nil) }
     @objc private func chooseWindows() { picker.open() }
@@ -139,23 +137,19 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
 
     @objc private func pickStyle(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let style = WrapStyle(rawValue: raw) { settings.style = style }
-        SoundPlayer.shared.play(.donk)
     }
 
     @objc private func pickTheme(_ sender: NSMenuItem) {
         if let id = sender.representedObject as? String { settings.themeID = id }
-        SoundPlayer.shared.play(.donk)
     }
 
     @objc private func pickSize(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let size = WrapSize(rawValue: raw) { settings.size = size }
-        SoundPlayer.shared.play(.donk)
     }
 
     @objc private func pickPattern(_ sender: NSMenuItem) {
         if let raw = sender.representedObject as? String, let pattern = LightPattern(rawValue: raw) {
             settings.pattern = pattern
         }
-        SoundPlayer.shared.play(.donk)
     }
 }

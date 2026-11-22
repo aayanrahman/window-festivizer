@@ -59,7 +59,8 @@ final class LightsOverlay {
         let shaken = !firstTime && newFrame.origin != frame.origin
             && shake.moved(to: newFrame.origin, at: CACurrentMediaTime())
         frame = newFrame
-        if build != built {
+        let rebuilt = build != built
+        if rebuilt {
             rebuild(build, beat: beat, pattern: pattern)
         }
         guard let g = geometry else { return false }
@@ -69,11 +70,16 @@ final class LightsOverlay {
             let anchor = global(t.anchor)
             // A window that jumped (just appeared, or came back from another Space) gets a tail
             // hanging at rest, rather than one that swings in from far away.
+            var fresh = rebuilt
             if chain == nil || distance(chain!.points[0], anchor) > 400 {
                 chain = SwingingTail(anchor: anchor, lead: t.lead, segments: t.segments, segmentLength: t.segmentLength)
+                fresh = true
             }
             move(tailWindow, to: t.rect)
-            tailLayers.layout(points: chain!.points, in: global(t.rect))
+            // A tail that's about to swing is redrawn by `step` straight after this, in the same
+            // tick; drawing it here too would be wasted work. Only a fresh one (new layers, or a
+            // new chain already at rest, which `step` would skip) needs drawing now.
+            if fresh { tailLayers.layout(points: chain!.points, in: global(t.rect)) }
         }
 
         if firstTime { fadeIn() }
