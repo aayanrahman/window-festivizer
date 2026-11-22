@@ -33,6 +33,9 @@ final class LightsOverlay {
     var orderMisses = 0
     var lastOrderAttempt: CFTimeInterval = 0
 
+    /// Notices the window being shaken as it's dragged.
+    private var shake = ShakeDetector()
+
     init(targetID: CGWindowID) {
         self.targetID = targetID
     }
@@ -43,19 +46,23 @@ final class LightsOverlay {
     }
 
     /// Follow the window to `newFrame`, redrawing the lights if its size or the settings changed.
+    /// Returns true if this move was the window being shaken (see ShakeDetector).
+    @discardableResult
     func update(frame newFrame: CGRect, theme: Theme, wrap: WrapSize, style: WrapStyle, tail: Bool,
-                beat: Int, pattern: LightPattern) {
+                beat: Int, pattern: LightPattern) -> Bool {
         let build = Build(size: newFrame.size, theme: theme, wrap: wrap, style: style, tail: tail)
         // This runs on every look at the windows (about 7 times a second even when idle), so do
         // nothing at all unless the window moved or the settings changed.
-        if build == built && newFrame == frame { return }
+        if build == built && newFrame == frame { return false }
 
         let firstTime = built == nil
+        let shaken = !firstTime && newFrame.origin != frame.origin
+            && shake.moved(to: newFrame.origin, at: CACurrentMediaTime())
         frame = newFrame
         if build != built {
             rebuild(build, beat: beat, pattern: pattern)
         }
-        guard let g = geometry else { return }
+        guard let g = geometry else { return false }
 
         move(stripWindow, to: g.stripRect)
         if let t = g.tail, let tailLayers {
@@ -70,6 +77,7 @@ final class LightsOverlay {
         }
 
         if firstTime { fadeIn() }
+        return shaken
     }
 
     /// Move the tail on by `dt` seconds. Returns true while it's still swinging.

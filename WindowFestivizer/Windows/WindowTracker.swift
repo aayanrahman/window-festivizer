@@ -36,6 +36,15 @@ final class WindowTracker: NSObject {
     private var candidates: [Target] = []
     private var allWindows: [Target] = []
 
+    /// Every window that's had lights since launch. Only a window never seen before gets the
+    /// new-window chime, so windows coming back from another Space or from being hidden don't.
+    private var seenWindows: Set<CGWindowID> = []
+    /// No new-window chime until this time: just after launch (every window is new then), and just
+    /// after a menu change or a choice in the picker, which play their own sounds.
+    private var chimeQuietUntil: CFTimeInterval = 0
+    private var lastChime: CFTimeInterval = 0
+    private var lastHit: CFTimeInterval = 0
+
     private static let fastInterval = 1.0 / 60
     /// Asking macOS for the window list is most of this app's idle cost, so while nothing is
     /// happening it only looks about 7 times a second. Mouse presses and drags switch to the fast
@@ -71,6 +80,7 @@ final class WindowTracker: NSObject {
     // MARK: Starting and stopping
 
     func start() {
+        chimeQuietUntil = CACurrentMediaTime() + 2.5
         setSpeed(fast: false)
 
         let beats = Timer(timeInterval: FestivizerPattern.beat, target: self, selector: #selector(nextBeat),
@@ -106,6 +116,7 @@ final class WindowTracker: NSObject {
     /// (LightsOverlay.update checks), windows that should no longer have lights lose them, and a new
     /// pattern takes effect straight away rather than at the next beat.
     func settingsChanged() {
+        chimeQuietUntil = CACurrentMediaTime() + 1
         refresh()
         let pattern = settings.pattern
         for overlay in overlays.values { overlay.showBeat(beat, pattern: pattern) }
@@ -257,15 +268,26 @@ final class WindowTracker: NSObject {
         }
 
         let wrap = settings.size, style = settings.style, tail = settings.tail, pattern = settings.pattern
+        var brandNew = false
         for t in targets {
             let overlay = overlays[t.id] ?? {
                 let made = LightsOverlay(targetID: t.id)
                 overlays[t.id] = made
+                if seenWindows.insert(t.id).inserted { brandNew = true }
                 return made
             }()
-            overlay.update(frame: t.frame, theme: settings.theme(forApp: t.owner), wrap: wrap, style: style,
-                           tail: tail, beat: beat, pattern: pattern)
+            let shaken = overlay.update(frame: t.frame, theme: settings.theme(forApp: t.owner), wrap: wrap,
+                                        style: style, tail: tail, beat: beat, pattern: pattern)
+            // A ding for every swing of a shake, but not faster than they can be told apart.
+            if shaken && now - lastHit > 0.08 {
+                lastHit = now
+                SoundPlayer.shared.play(.hit)
+            }
             keepAbove(overlay, t, stackIndex: stackIndex, ownerAt: ownerAt, now: now)
+        }
+        if brandNew && now > chimeQuietUntil && now - lastChime > 1.5 {
+            lastChime = now
+            SoundPlayer.shared.play(.chime)
         }
     }
 
@@ -334,6 +356,7 @@ final class WindowTracker: NSObject {
     /// Choose a window, or take it back. Choosing picks its whole app (remembered across restarts),
     /// or with `justThisWindow` only that one window. Taking back undoes whichever choice lit it.
     func toggle(_ window: PickableWindow, justThisWindow: Bool) {
+        chimeQuietUntil = CACurrentMediaTime() + 1
         if window.isChosen {
             settings.chosenApps.remove(window.app)
             chosenWindows.remove(window.id)

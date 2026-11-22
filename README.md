@@ -50,13 +50,21 @@ team under the target's **Signing & Capabilities** tab.
 | When | Sound |
 | --- | --- |
 | The lights switch on, including at launch | Item open crate |
+| A brand-new window gets its lights | Christmas notification |
+| You shake a window while dragging it (every swing) | Christmas hitsound |
 | You choose a window in Choose Windows | Achievement earned |
 | You take a window's lights off | Mantreads |
 | You change Style, Lights, Size, Pattern or the tail | Doubledonk |
 
-The files are in `WindowFestivizer/Sounds`, downloaded from the
-[Team Fortress Wiki](https://wiki.teamfortress.com/wiki/Category:Audio_cues). To use different ones,
-replace a file keeping its name, or change the names in `App/Sounds.swift`.
+The files are in `WindowFestivizer/Sounds`. The TF2 ones come from the
+[Team Fortress Wiki](https://wiki.teamfortress.com/wiki/Category:Audio_cues); the two Christmas ones
+come from TF2 sound mods (a notification sound and a hitsound). To use different ones, replace a
+file keeping its name, or change the names in `App/Sounds.swift`.
+
+The new-window chime stays quiet for windows already open at launch, windows coming back from
+another Space, and windows you choose in the picker, and plays at most every 1.5 seconds. A shake
+is a fast drag that turns round sharply (see `Windows/ShakeDetector.swift`); a fast drag in one
+direction, or round a corner, doesn't count.
 
 Full-screen windows, popovers, sheets and small dialogs go without lights. Nothing covers the red,
 yellow and green buttons, and clicks always pass straight through the lights.
@@ -68,9 +76,10 @@ yellow and green buttons, and clicks always pass straight through the lights.
 | `App/WindowFestivizerApp.swift` | Entry point. Starts the menu-bar app, or handles `--render`. |
 | `App/AppDelegate.swift` | The menu-bar icon and its menu. |
 | `App/Settings.swift` | Menu choices and chosen apps, saved in UserDefaults. Sizes and styles are defined here. |
-| `App/Sounds.swift` | Which sound plays when, and the player. The files are in `Sounds/`. |
+| `App/Sounds.swift` | The sounds and the player. The files are in `Sounds/`. |
 | `Windows/WindowTracker.swift` | Reads the window list about 7 times a second (60 while something moves or a tail swings), decides which windows get lights, keeps the lights stacked above them, and ticks the blink beat. |
 | `Windows/WindowPicker.swift` | Choose Windows: the dimmed sheet, the spotlight and label, and the banner. |
+| `Windows/ShakeDetector.swift` | Notices a window being shaken while it's dragged, for the hitsound. |
 | `Windows/LightsOverlay.swift` | One window's lights: an overlay for the strip along its top and one for its tail. |
 | `Windows/OverlayWindow.swift` | The see-through, click-through window the lights are drawn in. |
 | `Lights/WrapGeometry.swift` | Where everything goes, for both styles. Wrapped Around treats the top of the title bar as a pole and winds a wandering helix round it; the back of each turn shows just above the window's edge. |
@@ -121,4 +130,4 @@ Clear saved settings and chosen apps: `defaults delete com.aayanrahman.windowfes
 ## License
 
 The code is MIT licensed; see [LICENSE](LICENSE). The sound effects in `WindowFestivizer/Sounds` are
-from Team Fortress 2 and belong to Valve; they aren't covered by that license.
+from Team Fortress 2 (Valve) and from community TF2 sound mods; they aren't covered by that license.
